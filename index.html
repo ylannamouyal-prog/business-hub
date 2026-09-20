@@ -207,6 +207,28 @@
     margin: 6px 4px 0 0;
   }
 
+  .suggestion-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13.5px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .suggestion-line:last-child { border-bottom: none; }
+  .suggestion-line .intensite { color: var(--text-faint); font-size: 12px; margin-left: 6px; }
+  .suggestion-add {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--gold);
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+  }
+  .suggestion-add:hover { border-color: var(--gold); }
+
   .empty {
     color: var(--text-faint);
     font-size: 14px;
@@ -433,6 +455,11 @@
       <div id="detail-prefs">—</div>
     </div>
 
+    <div class="detail-section" id="detail-suggestions-section" style="display:none;">
+      <h4>Centres d'intérêt détectés <span class="hint">(estimé à partir des achats, à confirmer)</span></h4>
+      <div id="detail-suggestions"></div>
+    </div>
+
     <div class="detail-section">
       <h4>Budget</h4>
       <div id="detail-budget">—</div>
@@ -653,12 +680,82 @@
       `;
     }
 
+    achatsCourants = achats || [];
+    afficherSuggestions(client, achatsCourants);
+
     document.getElementById('overlay').classList.add('open');
     loadDemandes(client.id);
     currentDetailClient = client;
   }
 
   let currentDetailClient = null;
+
+  function intensiteLabel(count) {
+    if (count >= 3) return 'Très élevé';
+    if (count === 2) return 'Élevé';
+    return 'Moyen';
+  }
+
+  function afficherSuggestions(client, achats) {
+    const section = document.getElementById('detail-suggestions-section');
+    const container = document.getElementById('detail-suggestions');
+
+    const catsDeclarees = (client.categories_preferees || []).map(c => c.toLowerCase());
+    const marquesDeclarees = (client.marques_preferees || []).map(m => m.toLowerCase());
+
+    const compteCats = {};
+    const compteMarques = {};
+    achats.forEach(a => {
+      if (a.categorie) compteCats[a.categorie] = (compteCats[a.categorie] || 0) + 1;
+      if (a.marque) compteMarques[a.marque] = (compteMarques[a.marque] || 0) + 1;
+    });
+
+    const suggestionsCats = Object.entries(compteCats).filter(([cat]) => !catsDeclarees.includes(cat.toLowerCase()));
+    const suggestionsMarques = Object.entries(compteMarques).filter(([m]) => !marquesDeclarees.includes(m.toLowerCase()));
+
+    if (!suggestionsCats.length && !suggestionsMarques.length) {
+      section.style.display = 'none';
+      return;
+    }
+
+    const lignes = [
+      ...suggestionsCats.map(([cat, count]) => ({ type: 'categorie', valeur: cat, count })),
+      ...suggestionsMarques.map(([m, count]) => ({ type: 'marque', valeur: m, count })),
+    ];
+
+    container.innerHTML = lignes.map((l, i) => `
+      <div class="suggestion-line">
+        <span>${l.type === 'categorie' ? '📦' : '🏷️'} ${l.valeur} <span class="intensite">${intensiteLabel(l.count)} (${l.count} achat${l.count > 1 ? 's' : ''})</span></span>
+        <button type="button" class="suggestion-add" data-index="${i}">+ Ajouter à ses préférences</button>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.suggestion-add').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const l = lignes[btn.dataset.index];
+        const champ = l.type === 'categorie' ? 'categories_preferees' : 'marques_preferees';
+        const valeursActuelles = client[champ] || [];
+        const nouvellesValeurs = [...valeursActuelles, l.valeur];
+
+        const { error } = await sb.from('clients').update({ [champ]: nouvellesValeurs }).eq('id', client.id);
+        if (error) {
+          alert('Erreur : ' + error.message);
+          return;
+        }
+        client[champ] = nouvellesValeurs;
+
+        const cats = (client.categories_preferees || []).map(c => `<span class="chip">${c}</span>`).join('');
+        const marques = (client.marques_preferees || []).map(c => `<span class="chip">${c}</span>`).join('');
+        document.getElementById('detail-prefs').innerHTML = (cats + marques) || '<span class="hint">Aucune préférence renseignée</span>';
+
+        afficherSuggestions(client, achatsCourants);
+      });
+    });
+
+    section.style.display = 'block';
+  }
+
+  let achatsCourants = [];
 
   async function loadDemandes(clientId) {
     const demandesEl = document.getElementById('detail-demandes');
