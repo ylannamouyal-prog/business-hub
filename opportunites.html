@@ -92,6 +92,10 @@
   }
   .opp-actions button:hover { border-color: var(--gold); color: var(--gold); }
   .opp-actions button.primary { border-color: var(--gold); color: var(--gold); }
+  .opp-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .quota-warning { font-size: 12px; color: var(--red); margin-top: 6px; }
+  .quota-info { font-size: 12px; color: var(--text-faint); margin-top: 6px; }
 
   .msg-box { margin-top: 10px; display: none; }
   .msg-box textarea {
@@ -278,6 +282,16 @@
     const propMap = {};
     (propositions || []).forEach(p => { propMap[p.client_id + '_' + p.produit_id] = p; });
 
+    const debutMois = new Date();
+    debutMois.setDate(1);
+    debutMois.setHours(0, 0, 0, 0);
+    const compteursMensuels = {};
+    (propositions || []).forEach(p => {
+      if (!p.date_proposition) return;
+      if (new Date(p.date_proposition) < debutMois) return;
+      compteursMensuels[p.client_id] = (compteursMensuels[p.client_id] || 0) + 1;
+    });
+
     const matches = [];
     clients.forEach(client => {
       produits.forEach(produit => {
@@ -286,7 +300,11 @@
         const key = client.id + '_' + produit.id;
         const existing = propMap[key];
         const statut = existing ? existing.statut : 'a_proposer';
-        matches.push({ client, produit, score, reasons, statut, key });
+        const max = client.frequence_max_par_mois != null ? Number(client.frequence_max_par_mois) : null;
+        const compte = compteursMensuels[client.id] || 0;
+        const quotaAtteint = max != null && compte >= max;
+        const quotaInfo = max != null ? `${compte}/${max} ce mois-ci` : null;
+        matches.push({ client, produit, score, reasons, statut, key, quotaAtteint, quotaInfo });
       });
     });
 
@@ -310,9 +328,11 @@
               <span class="opp-score ${prio.cls}">${m.score}%</span>
             </div>
             <div class="opp-reasons">${m.reasons.map(r => `<div>✓ ${r}</div>`).join('')}</div>
+            ${m.quotaAtteint ? `<div class="quota-warning">🚫 Quota mensuel atteint (${m.quotaInfo})</div>`
+              : m.quotaInfo ? `<div class="quota-info">${m.quotaInfo}</div>` : ''}
             <div class="opp-actions">
               <button type="button" class="msg-btn" data-index="${i}">✉️ Préparer un message</button>
-              <button type="button" class="primary act-btn" data-index="${i}" data-action="propose">Marquer comme proposé</button>
+              <button type="button" class="primary act-btn" data-index="${i}" data-action="propose" ${m.quotaAtteint ? 'disabled' : ''}>Marquer comme proposé</button>
               <button type="button" class="act-btn" data-index="${i}" data-action="ignore">Ignorer</button>
               <button type="button" class="act-btn" data-index="${i}" data-action="pas_interesse">Pas intéressé</button>
             </div>
@@ -356,6 +376,11 @@
           const i = btn.dataset.index;
           const m = activeMatches[i];
           const action = btn.dataset.action;
+
+          if (action === 'propose' && m.quotaAtteint) {
+            alert(`${m.client.prenom} a déjà atteint son quota de propositions ce mois-ci (${m.quotaInfo}).`);
+            return;
+          }
 
           const payload = {
             client_id: m.client.id,
