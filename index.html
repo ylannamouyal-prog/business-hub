@@ -239,7 +239,19 @@
     border: none;
   }
 
-  .detail .sub { color: var(--text-faint); font-size: 13px; margin-bottom: 20px; }
+  .detail .sub { color: var(--text-faint); font-size: 13px; margin-bottom: 12px; }
+
+  .statut-badge-select {
+    width: auto;
+    background: var(--gold-soft);
+    color: var(--gold);
+    border: 1px solid var(--border);
+    padding: 5px 10px;
+    border-radius: var(--radius);
+    font-size: 12.5px;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
 
   .detail-section {
     border-top: 1px solid var(--border);
@@ -357,6 +369,13 @@
     </div>
     <div class="sub" id="detail-contact">—</div>
 
+    <select id="detail-statut" class="statut-badge-select">
+      <option value="standard">Standard</option>
+      <option value="actif">Actif</option>
+      <option value="premium">Premium</option>
+      <option value="vip">⭐ VIP</option>
+    </select>
+
     <div class="detail-section">
       <h4>Préférences</h4>
       <div id="detail-prefs">—</div>
@@ -431,8 +450,10 @@
       const card = document.createElement('div');
       card.className = 'client-card';
       const cats = (client.categories_preferees || []).map(c => `<span class="chip">${c}</span>`).join('');
+      const statutBadges = { actif: '● Actif', premium: '◆ Premium', vip: '⭐ VIP' };
+      const badge = statutBadges[client.statut] ? `<span class="chip">${statutBadges[client.statut]}</span>` : '';
       card.innerHTML = `
-        <div class="name">${client.prenom} ${client.nom || ''}</div>
+        <div class="name">${client.prenom} ${client.nom || ''} ${badge}</div>
         <div class="meta">${client.email || ''} ${client.telephone ? '· ' + client.telephone : ''}</div>
         <div>${cats}</div>
       `;
@@ -445,6 +466,18 @@
     document.getElementById('detail-name').textContent = `${client.prenom} ${client.nom || ''}`;
     document.getElementById('detail-contact').textContent =
       [client.email, client.telephone].filter(Boolean).join(' · ') || 'Aucun contact renseigné';
+
+    const statutSelect = document.getElementById('detail-statut');
+    statutSelect.value = client.statut || 'standard';
+    statutSelect.onchange = async () => {
+      const { error } = await sb.from('clients').update({ statut: statutSelect.value }).eq('id', client.id);
+      if (error) {
+        alert('Erreur : ' + error.message);
+        return;
+      }
+      client.statut = statutSelect.value;
+      loadClients();
+    };
 
     const cats = (client.categories_preferees || []).map(c => `<span class="chip">${c}</span>`).join('');
     const marques = (client.marques_preferees || []).map(c => `<span class="chip">${c}</span>`).join('');
