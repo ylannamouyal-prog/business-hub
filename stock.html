@@ -174,6 +174,44 @@
   .match-reasons { margin-top: 6px; font-size: 13px; color: var(--text-dim); }
   .match-reasons div { margin-top: 2px; }
 
+  .msg-btn {
+    margin-top: 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--gold);
+    padding: 6px 12px;
+    border-radius: var(--radius);
+    font-size: 12.5px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+  }
+  .msg-btn:hover { border-color: var(--gold); }
+
+  .msg-box { margin-top: 10px; }
+  .msg-box textarea {
+    width: 100%;
+    background: var(--bg-panel-raised);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px;
+    border-radius: var(--radius);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    resize: vertical;
+  }
+  .msg-copy {
+    margin-top: 6px;
+    background: var(--gold);
+    color: #1c1914;
+    border: none;
+    padding: 7px 14px;
+    border-radius: var(--radius);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+  }
+
   /* Modale de vente */
   .overlay {
     display: none;
@@ -559,6 +597,18 @@
     return { score, reasons };
   }
 
+  let currentMatches = [];
+  let currentMatchProduit = null;
+
+  function genererMessage(client, produit, reasons) {
+    const raisonPrincipale = reasons[0] ? reasons[0].charAt(0).toLowerCase() + reasons[0].slice(1) : null;
+    let phraseRaison = raisonPrincipale ? ` Je me suis dit que ça pourrait t'intéresser vu que ${raisonPrincipale.toLowerCase()}.` : '';
+
+    let prixTxt = produit.prix ? ` à ${produit.prix} €` : '';
+
+    return `Salut ${client.prenom}, j'ai reçu ${produit.nom}${prixTxt}.${phraseRaison} Si tu veux, je peux t'envoyer les photos et les détails.`;
+  }
+
   async function runMatching(produit) {
     const { data: clients, error } = await sb.from('clients').select('*');
     if (error || !clients.length) return;
@@ -568,22 +618,59 @@
       .filter(m => m.score > 0)
       .sort((a, b) => b.score - a.score);
 
+    currentMatches = matches;
+    currentMatchProduit = produit;
+
     if (!matches.length) {
       matchPanel.style.display = 'none';
       return;
     }
 
-    matchResults.innerHTML = matches.map(m => `
+    matchResults.innerHTML = matches.map((m, i) => `
       <div class="match-card ${m.score < 40 ? 'low' : ''}">
         <div class="match-head">
           <span class="match-name">${m.client.prenom} ${m.client.nom || ''}</span>
           <span class="match-score">${m.score}%</span>
         </div>
         <div class="match-reasons">${m.reasons.map(r => `<div>✓ ${r}</div>`).join('')}</div>
+        <button type="button" class="msg-btn" data-index="${i}">✉️ Préparer un message</button>
+        <div class="msg-box" id="msg-box-${i}" style="display:none;">
+          <textarea id="msg-text-${i}" rows="4"></textarea>
+          <button type="button" class="msg-copy" data-index="${i}">Copier le message</button>
+        </div>
       </div>
     `).join('');
 
     matchPanel.style.display = 'block';
+
+    matchResults.querySelectorAll('.msg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const i = btn.dataset.index;
+        const box = document.getElementById(`msg-box-${i}`);
+        const textarea = document.getElementById(`msg-text-${i}`);
+        if (box.style.display === 'none') {
+          const m = currentMatches[i];
+          textarea.value = genererMessage(m.client, currentMatchProduit, m.reasons);
+          box.style.display = 'block';
+        } else {
+          box.style.display = 'none';
+        }
+      });
+    });
+
+    matchResults.querySelectorAll('.msg-copy').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const i = btn.dataset.index;
+        const textarea = document.getElementById(`msg-text-${i}`);
+        try {
+          await navigator.clipboard.writeText(textarea.value);
+          btn.textContent = 'Copié !';
+          setTimeout(() => { btn.textContent = 'Copier le message'; }, 1500);
+        } catch {
+          textarea.select();
+        }
+      });
+    });
   }
 
   formEl.addEventListener('submit', async (e) => {
