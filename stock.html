@@ -697,7 +697,8 @@
   }
 
   async function runMatching(produit) {
-    const { data: clients, error } = await sb.from('clients').select('*');
+    const { data: clientsRaw, error } = await sb.from('clients').select('*');
+    const clients = (clientsRaw || []).filter(c => c.recoit_propositions !== false);
     if (error || !clients.length) return;
 
     const { data: achats } = await sb.from('achats').select('*');
