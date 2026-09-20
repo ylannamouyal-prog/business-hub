@@ -159,6 +159,7 @@
     <a href="stock.html">Stock</a>
     <a href="opportunites.html" class="active">Opportunités</a>
     <a href="tableau-de-bord.html">Tableau de bord</a>
+    <a href="messages.html">Messages</a>
   </nav>
 
   <h2 class="section-title">🎯 Clients à contacter</h2>
@@ -250,6 +251,35 @@
     return `Salut ${client.prenom}, j'ai reçu ${produit.nom}${prixTxt}.${phraseRaison} Si tu veux, je peux t'envoyer les photos et les détails.`;
   }
 
+  let messageTemplates = [];
+
+  async function loadMessageTemplates() {
+    const { data } = await sb.from('message_templates').select('*').order('created_at', { ascending: false });
+    messageTemplates = data || [];
+  }
+
+  function remplirModele(contenu, client, produit, reasons) {
+    const raison = (reasons && reasons.length) ? reasons[0] : '';
+    return contenu
+      .split('{prenom}').join(client.prenom || '')
+      .split('{nom}').join(client.nom || '')
+      .split('{produit}').join(produit.nom || '')
+      .split('{prix}').join(produit.prix != null ? produit.prix + ' €' : '')
+      .split('{raison}').join(raison);
+  }
+
+  function texteOptionsModeles() {
+    return '<option value="">Message automatique</option>' +
+      messageTemplates.map(t => `<option value="${t.id}">${t.titre}</option>`).join('');
+  }
+
+  function genererDepuisSelection(templateId, client, produit, reasons) {
+    if (!templateId) return genererMessage(client, produit, reasons);
+    const t = messageTemplates.find(m => m.id === templateId);
+    if (!t) return genererMessage(client, produit, reasons);
+    return remplirModele(t.contenu, client, produit, reasons);
+  }
+
   function priorityInfo(score) {
     if (score >= 80) return { label: '🔴 Priorité élevée', cls: 'high' };
     if (score >= 50) return { label: '🟠 Priorité moyenne', cls: 'medium' };
@@ -337,6 +367,7 @@
               <button type="button" class="act-btn" data-index="${i}" data-action="pas_interesse">Pas intéressé</button>
             </div>
             <div class="msg-box" id="opp-msg-box-${i}">
+              <select class="msg-template-select" data-index="${i}" style="margin-bottom:8px;">${texteOptionsModeles()}</select>
               <textarea id="opp-msg-text-${i}" rows="4"></textarea>
               <button type="button" class="msg-copy" data-index="${i}">Copier le message</button>
             </div>
@@ -349,13 +380,23 @@
           const i = btn.dataset.index;
           const box = document.getElementById(`opp-msg-box-${i}`);
           const textarea = document.getElementById(`opp-msg-text-${i}`);
+          const select = box.querySelector('.msg-template-select');
           if (box.style.display !== 'block') {
             const m = activeMatches[i];
-            textarea.value = genererMessage(m.client, m.produit, m.reasons);
+            textarea.value = genererDepuisSelection(select.value, m.client, m.produit, m.reasons);
             box.style.display = 'block';
           } else {
             box.style.display = 'none';
           }
+        });
+      });
+
+      oppListEl.querySelectorAll('.msg-template-select').forEach(select => {
+        select.addEventListener('change', () => {
+          const i = select.dataset.index;
+          const m = activeMatches[i];
+          const textarea = document.getElementById(`opp-msg-text-${i}`);
+          textarea.value = genererDepuisSelection(select.value, m.client, m.produit, m.reasons);
         });
       });
 
@@ -444,6 +485,7 @@
     });
   }
 
+  loadMessageTemplates();
   loadOpportunites();
 </script>
 
