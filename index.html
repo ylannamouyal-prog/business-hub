@@ -174,6 +174,19 @@
   }
   .checkbox-label input { width: auto; }
 
+  .delete-btn {
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    padding: 10px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+  }
+  .delete-btn:hover { background: rgba(196, 116, 86, 0.1); }
+
   .client-list { display: flex; flex-direction: column; gap: 10px; }
 
   .client-card {
@@ -452,6 +465,15 @@
     </div>
     <div class="sub" id="detail-contact">—</div>
 
+    <div class="row2" style="margin-bottom:8px;">
+      <input id="detail-prenom" placeholder="Prénom">
+      <input id="detail-nom" placeholder="Nom">
+    </div>
+    <div class="row2" style="margin-bottom:16px;">
+      <input id="detail-email" placeholder="Email" type="email">
+      <input id="detail-telephone" placeholder="Téléphone">
+    </div>
+
     <select id="detail-statut" class="statut-badge-select">
       <option value="standard">Standard</option>
       <option value="actif">Actif</option>
@@ -466,7 +488,10 @@
 
     <div class="detail-section">
       <h4>Préférences</h4>
-      <div id="detail-prefs">—</div>
+      <div id="detail-cats-chips"></div>
+      <input id="detail-categories" placeholder="Catégories préférées (ex: Billetterie, Article)" style="margin-top:8px;">
+      <div id="detail-marques-chips" style="margin-top:8px;"></div>
+      <input id="detail-marques" placeholder="Marques préférées (ex: Rolex, Nike)" style="margin-top:8px;">
     </div>
 
     <div class="detail-section">
@@ -483,7 +508,10 @@
 
     <div class="detail-section">
       <h4>Budget</h4>
-      <div id="detail-budget">—</div>
+      <div class="row2">
+        <input id="detail-budget-min" type="number" min="0" placeholder="Budget min (€)">
+        <input id="detail-budget-max" type="number" min="0" placeholder="Budget max (€)">
+      </div>
     </div>
 
     <div class="detail-section">
@@ -520,6 +548,10 @@
         <button type="submit" class="primary" style="margin-top:10px;">+ Enregistrer la demande</button>
         <div id="demande-msg"></div>
       </form>
+    </div>
+
+    <div class="detail-section">
+      <button type="button" id="detail-delete" class="delete-btn">🗑️ Supprimer ce client</button>
     </div>
   </div>
 </div>
@@ -636,6 +668,41 @@
     document.getElementById('detail-contact').textContent =
       [client.email, client.telephone].filter(Boolean).join(' · ') || 'Aucun contact renseigné';
 
+    const prenomInput = document.getElementById('detail-prenom');
+    const nomInput = document.getElementById('detail-nom');
+    const emailInput = document.getElementById('detail-email');
+    const telephoneInput = document.getElementById('detail-telephone');
+    prenomInput.value = client.prenom || '';
+    nomInput.value = client.nom || '';
+    emailInput.value = client.email || '';
+    telephoneInput.value = client.telephone || '';
+
+    async function sauvegarderIdentite() {
+      if (!prenomInput.value.trim()) {
+        prenomInput.value = client.prenom; // le prénom est obligatoire
+        return;
+      }
+      const updates = {
+        prenom: prenomInput.value.trim(),
+        nom: nomInput.value.trim() || null,
+        email: emailInput.value.trim() || null,
+        telephone: telephoneInput.value.trim() || null,
+      };
+      const { error } = await sb.from('clients').update(updates).eq('id', client.id);
+      if (error) {
+        alert('Erreur : ' + error.message);
+        return;
+      }
+      Object.assign(client, updates);
+      document.getElementById('detail-name').textContent = `${client.prenom} ${client.nom || ''}`;
+      document.getElementById('detail-contact').textContent =
+        [client.email, client.telephone].filter(Boolean).join(' · ') || 'Aucun contact renseigné';
+      loadClients();
+    }
+    [prenomInput, nomInput, emailInput, telephoneInput].forEach(input => {
+      input.onblur = sauvegarderIdentite;
+    });
+
     const statutSelect = document.getElementById('detail-statut');
     statutSelect.value = client.statut || 'standard';
     statutSelect.onchange = async () => {
@@ -712,14 +779,72 @@
       afficherCentresInteretChips();
     };
 
-    const cats = (client.categories_preferees || []).map(c => `<span class="chip">${c}</span>`).join('');
-    const marques = (client.marques_preferees || []).map(c => `<span class="chip">${c}</span>`).join('');
-    document.getElementById('detail-prefs').innerHTML = (cats + marques) || '<span class="hint">Aucune préférence renseignée</span>';
+    const categoriesInput = document.getElementById('detail-categories');
+    const catsChipsEl = document.getElementById('detail-cats-chips');
+    function afficherCatsChips() {
+      catsChipsEl.innerHTML = (client.categories_preferees || []).map(c => `<span class="chip">${c}</span>`).join('')
+        || '<span class="hint">Aucune renseignée</span>';
+    }
+    categoriesInput.value = (client.categories_preferees || []).join(', ');
+    afficherCatsChips();
+    categoriesInput.onblur = async () => {
+      const nouvellesValeurs = toArray(categoriesInput.value);
+      const { error } = await sb.from('clients').update({ categories_preferees: nouvellesValeurs }).eq('id', client.id);
+      if (error) {
+        alert('Erreur : ' + error.message);
+        return;
+      }
+      client.categories_preferees = nouvellesValeurs;
+      afficherCatsChips();
+    };
 
-    const budgetTxt = (client.budget_min || client.budget_max)
-      ? `${client.budget_min ?? '?'} € — ${client.budget_max ?? '?'} €`
-      : 'Non renseigné';
-    document.getElementById('detail-budget').textContent = budgetTxt;
+    const marquesInput = document.getElementById('detail-marques');
+    const marquesChipsEl = document.getElementById('detail-marques-chips');
+    function afficherMarquesChips() {
+      marquesChipsEl.innerHTML = (client.marques_preferees || []).map(c => `<span class="chip">${c}</span>`).join('')
+        || '<span class="hint">Aucune renseignée</span>';
+    }
+    marquesInput.value = (client.marques_preferees || []).join(', ');
+    afficherMarquesChips();
+    marquesInput.onblur = async () => {
+      const nouvellesValeurs = toArray(marquesInput.value);
+      const { error } = await sb.from('clients').update({ marques_preferees: nouvellesValeurs }).eq('id', client.id);
+      if (error) {
+        alert('Erreur : ' + error.message);
+        return;
+      }
+      client.marques_preferees = nouvellesValeurs;
+      afficherMarquesChips();
+    };
+
+    const budgetMinInput = document.getElementById('detail-budget-min');
+    const budgetMaxInput = document.getElementById('detail-budget-max');
+    budgetMinInput.value = client.budget_min ?? '';
+    budgetMaxInput.value = client.budget_max ?? '';
+    async function sauvegarderBudget() {
+      const updates = {
+        budget_min: budgetMinInput.value || null,
+        budget_max: budgetMaxInput.value || null,
+      };
+      const { error } = await sb.from('clients').update(updates).eq('id', client.id);
+      if (error) {
+        alert('Erreur : ' + error.message);
+        return;
+      }
+      Object.assign(client, updates);
+    }
+    [budgetMinInput, budgetMaxInput].forEach(input => { input.onblur = sauvegarderBudget; });
+
+    document.getElementById('detail-delete').onclick = async () => {
+      if (!confirm(`Supprimer définitivement ${client.prenom} ${client.nom || ''} ? Cette action est irréversible.`)) return;
+      const { error } = await sb.from('clients').delete().eq('id', client.id);
+      if (error) {
+        alert('Erreur : ' + error.message);
+        return;
+      }
+      document.getElementById('overlay').classList.remove('open');
+      loadClients();
+    };
 
     const achatsEl = document.getElementById('detail-achats');
     achatsEl.innerHTML = 'Chargement…';
@@ -828,9 +953,13 @@
         }
         client[champ] = nouvellesValeurs;
 
-        const cats = (client.categories_preferees || []).map(c => `<span class="chip">${c}</span>`).join('');
-        const marques = (client.marques_preferees || []).map(c => `<span class="chip">${c}</span>`).join('');
-        document.getElementById('detail-prefs').innerHTML = (cats + marques) || '<span class="hint">Aucune préférence renseignée</span>';
+        if (champ === 'categories_preferees') {
+          document.getElementById('detail-categories').value = nouvellesValeurs.join(', ');
+          document.getElementById('detail-cats-chips').innerHTML = nouvellesValeurs.map(c => `<span class="chip">${c}</span>`).join('');
+        } else {
+          document.getElementById('detail-marques').value = nouvellesValeurs.join(', ');
+          document.getElementById('detail-marques-chips').innerHTML = nouvellesValeurs.map(c => `<span class="chip">${c}</span>`).join('');
+        }
 
         afficherSuggestions(client, achatsCourants);
       });
