@@ -225,6 +225,49 @@
     font-family: 'Inter', sans-serif;
   }
 
+  .campagne-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .campagne-bar button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 7px 11px;
+    border-radius: var(--radius);
+    font-size: 12.5px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+  }
+  .campagne-bar button:hover { border-color: var(--gold); color: var(--gold); }
+  .campagne-bar button.primary { border-color: var(--gold); color: var(--gold); }
+
+  .match-checkbox-label { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .match-checkbox-label .match-head { flex: 1; }
+  .match-checkbox { width: auto; flex-shrink: 0; }
+
+  .campagne-msg-item {
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+    margin-top: 10px;
+  }
+  .campagne-msg-name { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .campagne-msg-text {
+    width: 100%;
+    background: var(--bg-panel-raised);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px;
+    border-radius: var(--radius);
+    font-family: 'Inter', sans-serif;
+    font-size: 12.5px;
+    resize: vertical;
+  }
+
   /* Modale de vente */
   .overlay {
     display: none;
@@ -815,22 +858,95 @@
       return;
     }
 
-    matchResults.innerHTML = matches.map((m, i) => `
-      <div class="match-card ${m.score < 40 ? 'low' : ''}">
-        <div class="match-head">
-          <span class="match-name">${m.client.prenom} ${m.client.nom || ''}</span>
-          <span class="match-score">${m.score}%</span>
-        </div>
-        <div class="match-reasons">${m.reasons.map(r => `<div>✓ ${r}</div>`).join('')}</div>
-        <button type="button" class="msg-btn" data-index="${i}">✉️ Préparer un message</button>
-        <div class="msg-box" id="msg-box-${i}" style="display:none;">
-          <textarea id="msg-text-${i}" rows="4"></textarea>
-          <button type="button" class="msg-copy" data-index="${i}">Copier le message</button>
-        </div>
+    matchResults.innerHTML = `
+      <div class="campagne-bar">
+        <button type="button" id="campagne-tout">Tout sélectionner</button>
+        <button type="button" id="campagne-preparer">✉️ Préparer les messages (sélection)</button>
+        <button type="button" id="campagne-proposer" class="primary">✓ Marquer proposé (sélection)</button>
       </div>
-    `).join('');
+      ${matches.map((m, i) => `
+        <div class="match-card ${m.score < 40 ? 'low' : ''}">
+          <label class="match-checkbox-label">
+            <input type="checkbox" class="match-checkbox" data-index="${i}">
+            <div class="match-head">
+              <span class="match-name">${m.client.prenom} ${m.client.nom || ''}</span>
+              <span class="match-score">${m.score}%</span>
+            </div>
+          </label>
+          <div class="match-reasons">${m.reasons.map(r => `<div>✓ ${r}</div>`).join('')}</div>
+          <button type="button" class="msg-btn" data-index="${i}">✉️ Préparer un message</button>
+          <div class="msg-box" id="msg-box-${i}" style="display:none;">
+            <textarea id="msg-text-${i}" rows="4"></textarea>
+            <button type="button" class="msg-copy" data-index="${i}">Copier le message</button>
+          </div>
+        </div>
+      `).join('')}
+      <div id="campagne-messages"></div>
+    `;
 
     matchPanel.style.display = 'block';
+
+    document.getElementById('campagne-tout').addEventListener('click', () => {
+      const boxes = matchResults.querySelectorAll('.match-checkbox');
+      const tousCoches = [...boxes].every(b => b.checked);
+      boxes.forEach(b => { b.checked = !tousCoches; });
+    });
+
+    document.getElementById('campagne-preparer').addEventListener('click', () => {
+      const selectionnes = [...matchResults.querySelectorAll('.match-checkbox:checked')].map(b => parseInt(b.dataset.index));
+      const container = document.getElementById('campagne-messages');
+      if (!selectionnes.length) {
+        container.innerHTML = '<div class="hint">Sélectionne au moins un client.</div>';
+        return;
+      }
+      container.innerHTML = `<h4 style="margin-top:16px;">Messages préparés</h4>` + selectionnes.map(i => {
+        const m = currentMatches[i];
+        const texte = genererMessage(m.client, currentMatchProduit, m.reasons);
+        return `
+          <div class="campagne-msg-item">
+            <div class="campagne-msg-name">${m.client.prenom} ${m.client.nom || ''}</div>
+            <textarea class="campagne-msg-text" data-index="${i}" rows="3">${texte}</textarea>
+            <button type="button" class="msg-copy campagne-msg-copy" data-index="${i}">Copier</button>
+          </div>
+        `;
+      }).join('');
+
+      container.querySelectorAll('.campagne-msg-copy').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const textarea = container.querySelector(`.campagne-msg-text[data-index="${btn.dataset.index}"]`);
+          try {
+            await navigator.clipboard.writeText(textarea.value);
+            btn.textContent = 'Copié !';
+            setTimeout(() => { btn.textContent = 'Copier'; }, 1500);
+          } catch { textarea.select(); }
+        });
+      });
+    });
+
+    document.getElementById('campagne-proposer').addEventListener('click', async () => {
+      const selectionnes = [...matchResults.querySelectorAll('.match-checkbox:checked')].map(b => parseInt(b.dataset.index));
+      if (!selectionnes.length) {
+        alert('Sélectionne au moins un client.');
+        return;
+      }
+      const lignes = selectionnes.map(i => {
+        const m = currentMatches[i];
+        return {
+          client_id: m.client.id,
+          produit_id: currentMatchProduit.id,
+          score: m.score,
+          raison: m.reasons.join(' · '),
+          statut: 'propose',
+          date_proposition: new Date().toISOString(),
+        };
+      });
+      const { error } = await sb.from('propositions').upsert(lignes, { onConflict: 'client_id,produit_id' });
+      if (error) {
+        alert('Erreur : ' + error.message);
+        return;
+      }
+      alert(`${lignes.length} client(s) marqué(s) comme proposé(s). Retrouve le suivi dans l'onglet Opportunités.`);
+    });
 
     matchResults.querySelectorAll('.msg-btn').forEach(btn => {
       btn.addEventListener('click', () => {
