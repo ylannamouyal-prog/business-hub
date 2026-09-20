@@ -330,6 +330,7 @@
     <a href="stock.html" class="active">Stock</a>
     <a href="opportunites.html">Opportunités</a>
     <a href="tableau-de-bord.html">Tableau de bord</a>
+    <a href="messages.html">Messages</a>
   </nav>
 
   <div class="layout">
@@ -827,6 +828,22 @@
 
   let currentMatches = [];
   let currentMatchProduit = null;
+  let messageTemplates = [];
+
+  async function loadMessageTemplates() {
+    const { data } = await sb.from('message_templates').select('*').order('created_at', { ascending: false });
+    messageTemplates = data || [];
+  }
+
+  function remplirModele(contenu, client, produit, reasons) {
+    const raison = (reasons && reasons.length) ? reasons[0] : '';
+    return contenu
+      .split('{prenom}').join(client.prenom || '')
+      .split('{nom}').join(client.nom || '')
+      .split('{produit}').join(produit.nom || '')
+      .split('{prix}').join(produit.prix != null ? produit.prix + ' €' : '')
+      .split('{raison}').join(raison);
+  }
 
   function genererMessage(client, produit, reasons) {
     const raisonPrincipale = reasons[0] ? reasons[0].charAt(0).toLowerCase() + reasons[0].slice(1) : null;
@@ -835,6 +852,18 @@
     let prixTxt = produit.prix ? ` à ${produit.prix} €` : '';
 
     return `Salut ${client.prenom}, j'ai reçu ${produit.nom}${prixTxt}.${phraseRaison} Si tu veux, je peux t'envoyer les photos et les détails.`;
+  }
+
+  function texteOptionsModeles() {
+    return '<option value="">Message automatique</option>' +
+      messageTemplates.map(t => `<option value="${t.id}">${t.titre}</option>`).join('');
+  }
+
+  function genererDepuisSelection(templateId, client, produit, reasons) {
+    if (!templateId) return genererMessage(client, produit, reasons);
+    const t = messageTemplates.find(m => m.id === templateId);
+    if (!t) return genererMessage(client, produit, reasons);
+    return remplirModele(t.contenu, client, produit, reasons);
   }
 
   async function getCompteursMensuels() {
@@ -892,6 +921,7 @@
     matchResults.innerHTML = `
       <div class="campagne-bar">
         <button type="button" id="campagne-tout">Tout sélectionner</button>
+        <select id="campagne-template-select" style="width:auto;">${texteOptionsModeles()}</select>
         <button type="button" id="campagne-preparer">✉️ Préparer les messages (sélection)</button>
         <button type="button" id="campagne-proposer" class="primary">✓ Marquer proposé (sélection)</button>
       </div>
@@ -909,6 +939,7 @@
           <div class="match-reasons">${m.reasons.map(r => `<div>✓ ${r}</div>`).join('')}</div>
           <button type="button" class="msg-btn" data-index="${i}">✉️ Préparer un message</button>
           <div class="msg-box" id="msg-box-${i}" style="display:none;">
+            <select class="msg-template-select" data-index="${i}" style="margin-bottom:8px;">${texteOptionsModeles()}</select>
             <textarea id="msg-text-${i}" rows="4"></textarea>
             <button type="button" class="msg-copy" data-index="${i}">Copier le message</button>
           </div>
@@ -928,13 +959,14 @@
     document.getElementById('campagne-preparer').addEventListener('click', () => {
       const selectionnes = [...matchResults.querySelectorAll('.match-checkbox:checked')].map(b => parseInt(b.dataset.index));
       const container = document.getElementById('campagne-messages');
+      const templateId = document.getElementById('campagne-template-select').value;
       if (!selectionnes.length) {
         container.innerHTML = '<div class="hint">Sélectionne au moins un client.</div>';
         return;
       }
       container.innerHTML = `<h4 style="margin-top:16px;">Messages préparés</h4>` + selectionnes.map(i => {
         const m = currentMatches[i];
-        const texte = genererMessage(m.client, currentMatchProduit, m.reasons);
+        const texte = genererDepuisSelection(templateId, m.client, currentMatchProduit, m.reasons);
         return `
           <div class="campagne-msg-item">
             <div class="campagne-msg-name">${m.client.prenom} ${m.client.nom || ''}</div>
@@ -994,13 +1026,23 @@
         const i = btn.dataset.index;
         const box = document.getElementById(`msg-box-${i}`);
         const textarea = document.getElementById(`msg-text-${i}`);
+        const select = box.querySelector('.msg-template-select');
         if (box.style.display === 'none') {
           const m = currentMatches[i];
-          textarea.value = genererMessage(m.client, currentMatchProduit, m.reasons);
+          textarea.value = genererDepuisSelection(select.value, m.client, currentMatchProduit, m.reasons);
           box.style.display = 'block';
         } else {
           box.style.display = 'none';
         }
+      });
+    });
+
+    matchResults.querySelectorAll('.msg-template-select').forEach(select => {
+      select.addEventListener('change', () => {
+        const i = select.dataset.index;
+        const m = currentMatches[i];
+        const textarea = document.getElementById(`msg-text-${i}`);
+        textarea.value = genererDepuisSelection(select.value, m.client, currentMatchProduit, m.reasons);
       });
     });
 
@@ -1326,6 +1368,7 @@
     loadProduits();
   });
 
+  loadMessageTemplates();
   loadProduits();
 </script>
 
