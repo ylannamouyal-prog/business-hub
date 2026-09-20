@@ -172,20 +172,35 @@
   const suiviListEl = document.getElementById('suivi-list');
 
   // --- Scoring (même logique que dans stock.html) ---
-  function computeMatch(client, produit) {
+  function computeMatch(client, produit, achats) {
     let score = 0;
     const reasons = [];
+    achats = achats || [];
 
     const cats = (client.categories_preferees || []).map(c => c.toLowerCase());
     const marques = (client.marques_preferees || []).map(m => m.toLowerCase());
 
     if (produit.categorie && cats.includes(produit.categorie.toLowerCase())) {
-      score += 40;
+      score += 30;
       reasons.push(`Intéressé par la catégorie « ${produit.categorie} »`);
     }
     if (produit.marque && marques.includes(produit.marque.toLowerCase())) {
-      score += 40;
+      score += 30;
       reasons.push(`A déjà une préférence pour la marque ${produit.marque}`);
+    }
+
+    const achatMemeCategorie = produit.categorie && achats.find(a => a.categorie && a.categorie.toLowerCase() === produit.categorie.toLowerCase());
+    if (achatMemeCategorie) {
+      score += 15;
+      reasons.push(`A déjà acheté dans la catégorie « ${produit.categorie} » (${achatMemeCategorie.nom_produit})`);
+    }
+
+    if (produit.marque) {
+      const achatMemeMarque = achats.find(a => a.marque && a.marque.toLowerCase() === produit.marque.toLowerCase());
+      if (achatMemeMarque) {
+        score += 10;
+        reasons.push(`A déjà acheté la marque ${produit.marque} (${achatMemeMarque.nom_produit})`);
+      }
     }
 
     const min = client.budget_min != null ? Number(client.budget_min) : null;
@@ -194,15 +209,24 @@
 
     if (min != null && max != null) {
       if (prix >= min && prix <= max) {
-        score += 20;
+        score += 15;
         reasons.push(`Prix dans son budget habituel (${min} € – ${max} €)`);
       }
     } else if (client.budget_max_connu != null && prix <= Number(client.budget_max_connu)) {
       score += 10;
       reasons.push(`Prix sous son budget maximum connu`);
+    } else if (achats.length) {
+      const prixAchats = achats.map(a => Number(a.prix || 0)).filter(p => p > 0);
+      if (prixAchats.length) {
+        const moyenne = prixAchats.reduce((s, p) => s + p, 0) / prixAchats.length;
+        if (moyenne > 0 && Math.abs(prix - moyenne) / moyenne <= 0.3) {
+          score += 10;
+          reasons.push(`Prix proche de ses achats précédents (moyenne ${Math.round(moyenne)} €)`);
+        }
+      }
     }
 
-    return { score, reasons };
+    return { score: Math.min(score, 100), reasons };
   }
 
   function genererMessage(client, produit, reasons) {
@@ -221,10 +245,11 @@
   let activeMatches = [];
 
   async function loadOpportunites() {
-    const [{ data: clients }, { data: produits }, { data: propositions }] = await Promise.all([
+    const [{ data: clients }, { data: produits }, { data: propositions }, { data: achats }] = await Promise.all([
       sb.from('clients').select('*'),
       sb.from('produits').select('*').neq('statut', 'vendu'),
       sb.from('propositions').select('*'),
+      sb.from('achats').select('*'),
     ]);
 
     if (!clients || !produits) {
@@ -232,13 +257,19 @@
       return;
     }
 
+    const achatsParClient = {};
+    (achats || []).forEach(a => {
+      if (!achatsParClient[a.client_id]) achatsParClient[a.client_id] = [];
+      achatsParClient[a.client_id].push(a);
+    });
+
     const propMap = {};
     (propositions || []).forEach(p => { propMap[p.client_id + '_' + p.produit_id] = p; });
 
     const matches = [];
     clients.forEach(client => {
       produits.forEach(produit => {
-        const { score, reasons } = computeMatch(client, produit);
+        const { score, reasons } = computeMatch(client, produit, achatsParClient[client.id]);
         if (score <= 0) return;
         const key = client.id + '_' + produit.id;
         const existing = propMap[key];
