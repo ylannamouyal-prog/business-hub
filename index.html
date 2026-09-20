@@ -390,6 +390,16 @@
           </div>
         </div>
 
+        <label>Tailles</label>
+        <div class="row2">
+          <input id="taille_pointure" placeholder="Pointure (ex: 42)">
+          <input id="taille_haut" placeholder="Taille haut (ex: M)">
+        </div>
+        <input id="taille_bas" placeholder="Taille pantalon (ex: 38)" style="margin-top:8px;">
+
+        <label for="notes">Notes</label>
+        <input id="notes" placeholder="Autres infos utiles...">
+
         <label class="checkbox-label">
           <input id="recoit_propositions" type="checkbox" checked>
           Recevoir des propositions automatiques
@@ -463,6 +473,16 @@
     <div class="detail-section">
       <h4>Budget</h4>
       <div id="detail-budget">—</div>
+    </div>
+
+    <div class="detail-section">
+      <h4>Tailles & notes</h4>
+      <div class="row2">
+        <input id="detail-taille-pointure" placeholder="Pointure">
+        <input id="detail-taille-haut" placeholder="Taille haut">
+      </div>
+      <input id="detail-taille-bas" placeholder="Taille pantalon" style="margin-top:8px;">
+      <input id="detail-notes" placeholder="Notes" style="margin-top:8px;">
     </div>
 
     <div class="detail-section">
@@ -627,6 +647,40 @@
       }
       client.recoit_propositions = recoitCheckbox.checked;
     };
+
+    const tailles = client.tailles || {};
+    const taillePointureInput = document.getElementById('detail-taille-pointure');
+    const tailleHautInput = document.getElementById('detail-taille-haut');
+    const tailleBasInput = document.getElementById('detail-taille-bas');
+    const notesInput = document.getElementById('detail-notes');
+
+    taillePointureInput.value = tailles.pointure || '';
+    tailleHautInput.value = tailles.haut || '';
+    tailleBasInput.value = tailles.bas || '';
+    notesInput.value = client.notes || '';
+
+    async function sauvegarderTaillesNotes() {
+      const nouvellesTailles = {
+        pointure: taillePointureInput.value.trim() || null,
+        haut: tailleHautInput.value.trim() || null,
+        bas: tailleBasInput.value.trim() || null,
+      };
+      const nouvellesNotes = notesInput.value.trim() || null;
+
+      const { error } = await sb.from('clients')
+        .update({ tailles: nouvellesTailles, notes: nouvellesNotes })
+        .eq('id', client.id);
+      if (error) {
+        alert('Erreur : ' + error.message);
+        return;
+      }
+      client.tailles = nouvellesTailles;
+      client.notes = nouvellesNotes;
+    }
+
+    [taillePointureInput, tailleHautInput, tailleBasInput, notesInput].forEach(input => {
+      input.onblur = sauvegarderTaillesNotes;
+    });
 
     const cats = (client.categories_preferees || []).map(c => `<span class="chip">${c}</span>`).join('');
     const marques = (client.marques_preferees || []).map(c => `<span class="chip">${c}</span>`).join('');
@@ -835,6 +889,12 @@
       budget_min: document.getElementById('budget_min').value || null,
       budget_max: document.getElementById('budget_max').value || null,
       recoit_propositions: document.getElementById('recoit_propositions').checked,
+      notes: document.getElementById('notes').value.trim() || null,
+      tailles: {
+        pointure: document.getElementById('taille_pointure').value.trim() || null,
+        haut: document.getElementById('taille_haut').value.trim() || null,
+        bas: document.getElementById('taille_bas').value.trim() || null,
+      },
     };
 
     if (!payload.prenom) {
