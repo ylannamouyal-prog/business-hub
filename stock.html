@@ -290,6 +290,9 @@
 
           <!-- Champs spécifiques BILLETTERIE -->
           <div id="fields-billetterie" style="display:none;">
+            <label for="evt_sport">Sport / thème</label>
+            <input id="evt_sport" placeholder="Football, Tennis, Basketball, Concert...">
+
             <label for="evt_lieu">Lieu</label>
             <input id="evt_lieu" placeholder="Stade de France, Défense Arena...">
 
@@ -516,7 +519,7 @@
       let detailsLine = '';
       const d = p.details || {};
       if (p.categorie === 'Billetterie') {
-        const parts = [d.lieu, d.date_evenement, d.nombre_places ? d.nombre_places + ' place(s)' : null, d.details_places]
+        const parts = [d.sport, d.lieu, d.date_evenement, d.nombre_places ? d.nombre_places + ' place(s)' : null, d.details_places]
           .filter(Boolean);
         detailsLine = parts.join(' · ');
       } else if (d.lieu_achat) {
@@ -585,6 +588,15 @@
     if (produit.marque && marques.includes(produit.marque.toLowerCase())) {
       score += 30;
       reasons.push(`A déjà une préférence pour la marque ${produit.marque}`);
+    }
+
+    // Centres d'intérêt / sports (surtout utile pour la billetterie)
+    if (produit.details && produit.details.sport) {
+      const interets = (client.centres_interet || []).map(c => c.toLowerCase());
+      if (interets.includes(produit.details.sport.toLowerCase())) {
+        score += 35;
+        reasons.push(`Pratique/aime ${produit.details.sport}`);
+      }
     }
 
     // Historique d'achats réel (indépendant des préférences déclarées)
@@ -783,6 +795,7 @@
       const placesVal = parseInt(document.getElementById('evt_places').value) || 1;
       prixFinal = uniteVal * placesVal;
       details = {
+        sport: document.getElementById('evt_sport').value.trim() || null,
         lieu: document.getElementById('evt_lieu').value.trim() || null,
         date_evenement: document.getElementById('evt_date').value || null,
         nombre_places: document.getElementById('evt_places').value || null,
