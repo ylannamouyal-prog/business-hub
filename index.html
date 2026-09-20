@@ -423,6 +423,9 @@
           Recevoir des propositions automatiques
         </label>
 
+        <label for="frequence_max">Fréquence max de propositions / mois</label>
+        <input id="frequence_max" type="number" min="1" placeholder="Illimité si vide">
+
         <button type="submit" class="primary">Ajouter le client</button>
         <div id="form-msg"></div>
       </form>
@@ -486,6 +489,9 @@
       <input id="detail-recoit-propositions" type="checkbox">
       Recevoir des propositions automatiques
     </label>
+
+    <label for="detail-frequence-max">Fréquence max de propositions / mois</label>
+    <input id="detail-frequence-max" type="number" min="1" placeholder="Illimité si vide" style="margin-bottom:16px;">
 
     <div class="detail-section">
       <h4>Préférences</h4>
@@ -725,6 +731,18 @@
         return;
       }
       client.recoit_propositions = recoitCheckbox.checked;
+    };
+
+    const frequenceMaxInput = document.getElementById('detail-frequence-max');
+    frequenceMaxInput.value = client.frequence_max_par_mois ?? '';
+    frequenceMaxInput.onblur = async () => {
+      const nouvelleValeur = frequenceMaxInput.value || null;
+      const { error } = await sb.from('clients').update({ frequence_max_par_mois: nouvelleValeur }).eq('id', client.id);
+      if (error) {
+        alert('Erreur : ' + error.message);
+        return;
+      }
+      client.frequence_max_par_mois = nouvelleValeur;
     };
 
     const tailles = client.tailles || {};
@@ -1050,6 +1068,7 @@
       budget_min: document.getElementById('budget_min').value || null,
       budget_max: document.getElementById('budget_max').value || null,
       recoit_propositions: document.getElementById('recoit_propositions').checked,
+      frequence_max_par_mois: document.getElementById('frequence_max').value || null,
       notes: document.getElementById('notes').value.trim() || null,
       tailles: {
         pointure: document.getElementById('taille_pointure').value.trim() || null,
