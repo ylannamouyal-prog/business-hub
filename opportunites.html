@@ -189,6 +189,15 @@
       reasons.push(`A déjà une préférence pour la marque ${produit.marque}`);
     }
 
+    // Centres d'intérêt / sports (surtout utile pour la billetterie)
+    if (produit.details && produit.details.sport) {
+      const interets = (client.centres_interet || []).map(c => c.toLowerCase());
+      if (interets.includes(produit.details.sport.toLowerCase())) {
+        score += 35;
+        reasons.push(`Pratique/aime ${produit.details.sport}`);
+      }
+    }
+
     const achatMemeCategorie = produit.categorie && achats.find(a => a.categorie && a.categorie.toLowerCase() === produit.categorie.toLowerCase());
     if (achatMemeCategorie) {
       score += 15;
