@@ -163,6 +163,51 @@
   }
   .match-reasons { margin-top: 6px; font-size: 13px; color: var(--text-dim); }
   .match-reasons div { margin-top: 2px; }
+
+  /* Modale de vente */
+  .overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 9, 7, 0.72);
+    align-items: flex-start;
+    justify-content: center;
+    padding: 60px 20px;
+    z-index: 10;
+  }
+  .overlay.open { display: flex; }
+
+  .modal {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    max-width: 420px;
+    width: 100%;
+    padding: 26px;
+  }
+
+  .modal h3 {
+    font-family: 'Fraunces', serif;
+    font-size: 19px;
+    margin: 0 0 4px;
+  }
+
+  .modal .sub { color: var(--text-faint); font-size: 13px; margin-bottom: 18px; }
+
+  .modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+  .modal-actions button {
+    flex: 1;
+    padding: 10px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    font-size: 14px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+  }
+  .modal-actions .confirm { background: var(--gold); color: #1c1914; border: none; font-weight: 600; }
+  .modal-actions .cancel { background: transparent; color: var(--text-dim); }
+  #vente-msg { margin-top: 10px; font-size: 13px; }
+  #vente-msg.error { color: var(--danger); }
 </style>
 </head>
 <body>
@@ -250,6 +295,31 @@
   </div>
 </div>
 
+<div class="overlay" id="vente-overlay">
+  <div class="modal">
+    <h3>Marquer comme vendu</h3>
+    <div class="sub" id="vente-produit-nom">—</div>
+
+    <label for="vente-client">Client *</label>
+    <select id="vente-client">
+      <option value="">— Choisir un client —</option>
+    </select>
+
+    <label for="vente-prix">Prix de vente (€) *</label>
+    <input id="vente-prix" type="number" min="0">
+
+    <label for="vente-date">Date de vente *</label>
+    <input id="vente-date" type="date">
+
+    <div id="vente-msg"></div>
+
+    <div class="modal-actions">
+      <button class="cancel" id="vente-cancel">Annuler</button>
+      <button class="confirm" id="vente-confirm">Confirmer la vente</button>
+    </div>
+  </div>
+</div>
+
 <script>
   const SUPABASE_URL = "https://ziacdbshrsklftxlkcyo.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppYWNkYnNocnNrbGZ0eGxrY3lvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0MDcyOTUsImV4cCI6MjEwNDk4MzI5NX0.9gMbDnuJ9ZMHIR-a-LUuq1iyD-Un-qaLOTVfZLOQZ8E";
@@ -278,6 +348,14 @@
       listEl.innerHTML = `<div class="empty">Aucun article en stock.</div>`;
       return;
     }
+
+    // Les articles vendus descendent en bas de la liste
+    data.sort((a, b) => {
+      if (a.statut === 'vendu' && b.statut !== 'vendu') return 1;
+      if (a.statut !== 'vendu' && b.statut === 'vendu') return -1;
+      return 0;
+    });
+
     listEl.innerHTML = '';
     data.forEach(p => {
       const card = document.createElement('div');
@@ -290,7 +368,7 @@
           <div class="meta">${p.categorie}${p.marque ? ' · ' + p.marque : ''} · <span class="price">${p.prix} €</span></div>
           ${objectifLabel ? `<div class="objectif">${objectifLabel}</div>` : ''}
         </div>
-        <select class="statut-select" data-id="${p.id}">
+        <select class="statut-select" data-id="${p.id}" data-nom="${p.nom}" data-categorie="${p.categorie}" data-marque="${p.marque || ''}" data-prix="${p.prix}" data-current="${p.statut}">
           <option value="disponible" ${p.statut === 'disponible' ? 'selected' : ''}>Disponible</option>
           <option value="reserve" ${p.statut === 'reserve' ? 'selected' : ''}>Réservé</option>
           <option value="vendu" ${p.statut === 'vendu' ? 'selected' : ''}>Vendu</option>
@@ -301,11 +379,17 @@
 
     listEl.querySelectorAll('.statut-select').forEach(sel => {
       sel.addEventListener('change', async (e) => {
+        const target = e.target;
+        if (target.value === 'vendu') {
+          openVenteModal(target);
+          return;
+        }
         const { error } = await sb.from('produits')
-          .update({ statut: e.target.value })
-          .eq('id', e.target.dataset.id);
+          .update({ statut: target.value })
+          .eq('id', target.dataset.id);
         if (error) {
           alert('Erreur lors de la mise à jour : ' + error.message);
+          target.value = target.dataset.current;
           return;
         }
         loadProduits();
@@ -419,6 +503,97 @@
     categorieAutre.style.display = 'none';
     loadProduits();
     runMatching(data);
+  });
+
+  // --- Modale de vente ---
+  const venteOverlay = document.getElementById('vente-overlay');
+  const venteClientSelect = document.getElementById('vente-client');
+  const ventePrixInput = document.getElementById('vente-prix');
+  const venteDateInput = document.getElementById('vente-date');
+  const venteMsg = document.getElementById('vente-msg');
+  const venteProduitNom = document.getElementById('vente-produit-nom');
+  let currentVenteSelect = null;
+
+  function todayStr() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  async function openVenteModal(selectEl) {
+    currentVenteSelect = selectEl;
+    venteMsg.textContent = '';
+    venteProduitNom.textContent = selectEl.dataset.nom;
+    ventePrixInput.value = selectEl.dataset.prix;
+    venteDateInput.value = todayStr();
+
+    venteClientSelect.innerHTML = '<option value="">Chargement…</option>';
+    const { data: clients, error } = await sb.from('clients').select('id, prenom, nom').order('prenom');
+    if (error) {
+      venteClientSelect.innerHTML = '<option value="">Erreur de chargement</option>';
+    } else {
+      venteClientSelect.innerHTML = '<option value="">— Choisir un client —</option>' +
+        clients.map(c => `<option value="${c.id}">${c.prenom} ${c.nom || ''}</option>`).join('');
+    }
+
+    venteOverlay.classList.add('open');
+  }
+
+  function closeVenteModal(revert) {
+    if (revert && currentVenteSelect) {
+      currentVenteSelect.value = currentVenteSelect.dataset.current;
+    }
+    venteOverlay.classList.remove('open');
+    currentVenteSelect = null;
+  }
+
+  document.getElementById('vente-cancel').addEventListener('click', () => closeVenteModal(true));
+  venteOverlay.addEventListener('click', (e) => {
+    if (e.target.id === 'vente-overlay') closeVenteModal(true);
+  });
+
+  document.getElementById('vente-confirm').addEventListener('click', async () => {
+    const clientId = venteClientSelect.value;
+    const prixVente = ventePrixInput.value;
+    const dateVente = venteDateInput.value;
+
+    if (!clientId || !prixVente || !dateVente) {
+      venteMsg.textContent = 'Client, prix et date sont obligatoires.';
+      venteMsg.className = 'error';
+      return;
+    }
+
+    const sel = currentVenteSelect;
+
+    // 1. Enregistrer l'achat côté client
+    const { error: achatError } = await sb.from('achats').insert({
+      client_id: clientId,
+      produit_id: sel.dataset.id,
+      nom_produit: sel.dataset.nom,
+      categorie: sel.dataset.categorie,
+      marque: sel.dataset.marque || null,
+      prix: prixVente,
+      date_achat: dateVente,
+    });
+
+    if (achatError) {
+      venteMsg.textContent = 'Erreur : ' + achatError.message;
+      venteMsg.className = 'error';
+      return;
+    }
+
+    // 2. Marquer le produit comme vendu
+    const { error: produitError } = await sb.from('produits')
+      .update({ statut: 'vendu' })
+      .eq('id', sel.dataset.id);
+
+    if (produitError) {
+      venteMsg.textContent = 'Erreur : ' + produitError.message;
+      venteMsg.className = 'error';
+      return;
+    }
+
+    closeVenteModal(false);
+    loadProduits();
   });
 
   loadProduits();
