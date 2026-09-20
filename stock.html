@@ -271,8 +271,9 @@
 
           <div class="row2">
             <div>
-              <label for="prix">Prix (€) *</label>
+              <label for="prix" id="label-prix">Prix (€) *</label>
               <input id="prix" type="number" min="0" required>
+              <div class="hint" id="prix-hint" style="display:none;"></div>
             </div>
             <div>
               <label for="type_produit">Type</label>
@@ -358,8 +359,27 @@
   const fieldsMode = document.getElementById('fields-mode');
   const labelNom = document.getElementById('label-nom');
   const nomInput = document.getElementById('nom');
+  const labelPrix = document.getElementById('label-prix');
+  const prixInput = document.getElementById('prix');
+  const prixHint = document.getElementById('prix-hint');
+  const evtPlacesInput = document.getElementById('evt_places');
 
   const CATEGORIES_MODE = ['Vêtements', 'Sneakers', 'Sacs'];
+
+  function updatePrixHint() {
+    if (categorieSelect.value !== 'Billetterie') {
+      prixHint.style.display = 'none';
+      return;
+    }
+    const unite = parseFloat(prixInput.value) || 0;
+    const places = parseInt(evtPlacesInput.value) || 1;
+    const total = unite * places;
+    prixHint.style.display = 'block';
+    prixHint.textContent = `Total pour ${places} place(s) : ${total} €`;
+  }
+
+  prixInput.addEventListener('input', updatePrixHint);
+  evtPlacesInput.addEventListener('input', updatePrixHint);
 
   categorieSelect.addEventListener('change', () => {
     const val = categorieSelect.value;
@@ -371,10 +391,13 @@
     if (val === 'Billetterie') {
       labelNom.textContent = "Nom de l'événement *";
       nomInput.placeholder = 'Finale Ligue des Champions';
+      labelPrix.textContent = 'Prix par place (€) *';
     } else {
       labelNom.textContent = 'Nom *';
       nomInput.placeholder = 'Rolex Datejust';
+      labelPrix.textContent = 'Prix (€) *';
     }
+    updatePrixHint();
   });
 
   async function loadProduits() {
@@ -405,17 +428,22 @@
 
       let detailsLine = '';
       const d = p.details || {};
-      if (p.categorie === 'Billetterie' && (d.lieu || d.date_evenement || d.details_places)) {
-        detailsLine = [d.lieu, d.date_evenement, d.nombre_places ? d.nombre_places + ' place(s)' : null, d.details_places]
-          .filter(Boolean).join(' · ');
+      if (p.categorie === 'Billetterie') {
+        const parts = [d.lieu, d.date_evenement, d.nombre_places ? d.nombre_places + ' place(s)' : null, d.details_places]
+          .filter(Boolean);
+        detailsLine = parts.join(' · ');
       } else if (d.lieu_achat) {
         detailsLine = 'Acheté sur ' + d.lieu_achat;
       }
 
+      const prixLine = (p.categorie === 'Billetterie' && d.prix_unitaire != null)
+        ? `Billet à l'unité : ${d.prix_unitaire} € · Total : ${p.prix} €`
+        : `${p.prix} €`;
+
       card.innerHTML = `
         <div class="info">
           <div class="name">${p.nom}</div>
-          <div class="meta">${p.categorie}${p.marque ? ' · ' + p.marque : ''} · <span class="price">${p.prix} €</span></div>
+          <div class="meta">${p.categorie}${p.marque ? ' · ' + p.marque : ''} · <span class="price">${prixLine}</span></div>
           ${detailsLine ? `<div class="objectif">${detailsLine}</div>` : ''}
           ${objectifLabel ? `<div class="objectif">${objectifLabel}</div>` : ''}
         </div>
@@ -521,12 +549,18 @@
       : categorieSelect.value;
 
     let details = {};
+    let prixFinal = document.getElementById('prix').value;
+
     if (categorieValue === 'Billetterie') {
+      const uniteVal = parseFloat(document.getElementById('prix').value) || 0;
+      const placesVal = parseInt(document.getElementById('evt_places').value) || 1;
+      prixFinal = uniteVal * placesVal;
       details = {
         lieu: document.getElementById('evt_lieu').value.trim() || null,
         date_evenement: document.getElementById('evt_date').value || null,
         nombre_places: document.getElementById('evt_places').value || null,
         details_places: document.getElementById('evt_details').value.trim() || null,
+        prix_unitaire: uniteVal,
       };
     } else if (CATEGORIES_MODE.includes(categorieValue)) {
       details = {
@@ -538,7 +572,7 @@
       nom: document.getElementById('nom').value.trim(),
       categorie: categorieValue,
       marque: document.getElementById('marque').value.trim() || null,
-      prix: document.getElementById('prix').value,
+      prix: prixFinal,
       type_produit: document.getElementById('type_produit').value || null,
       objectif: document.getElementById('objectif').value || null,
       details: details,
@@ -570,6 +604,8 @@
     fieldsBilletterie.style.display = 'none';
     fieldsMode.style.display = 'none';
     labelNom.textContent = 'Nom *';
+    labelPrix.textContent = 'Prix (€) *';
+    prixHint.style.display = 'none';
     loadProduits();
     runMatching(data);
   });
