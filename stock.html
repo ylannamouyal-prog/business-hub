@@ -142,6 +142,16 @@
 
   .empty { color: var(--text-faint); font-size: 14px; padding: 20px 0; text-align: center; }
 
+  .category-header {
+    font-family: 'Fraunces', serif;
+    font-size: 13px;
+    color: var(--text-faint);
+    margin: 18px 0 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .category-header:first-child { margin-top: 0; }
+
   /* Matching results */
   .match-card {
     border: 1px solid var(--border);
@@ -234,16 +244,10 @@
           <label for="categorie">Catégorie *</label>
           <select id="categorie" required>
             <option value="">— Choisir —</option>
-            <option value="Montres">Montres</option>
             <option value="Billetterie">Billetterie</option>
-            <option value="Sneakers">Sneakers</option>
-            <option value="Vêtements">Vêtements</option>
-            <option value="Sacs">Sacs</option>
+            <option value="Article">Article</option>
             <option value="Pokémon / TCG">Pokémon / TCG</option>
-            <option value="Bijoux">Bijoux</option>
-            <option value="autre">Autre…</option>
           </select>
-          <input id="categorie_autre" placeholder="Précise la catégorie" style="display:none; margin-top:8px;">
 
           <!-- Champs spécifiques BILLETTERIE -->
           <div id="fields-billetterie" style="display:none;">
@@ -354,7 +358,6 @@
   const matchResults = document.getElementById('match-results');
 
   const categorieSelect = document.getElementById('categorie');
-  const categorieAutre = document.getElementById('categorie_autre');
   const fieldsBilletterie = document.getElementById('fields-billetterie');
   const fieldsMode = document.getElementById('fields-mode');
   const labelNom = document.getElementById('label-nom');
@@ -364,7 +367,8 @@
   const prixHint = document.getElementById('prix-hint');
   const evtPlacesInput = document.getElementById('evt_places');
 
-  const CATEGORIES_MODE = ['Vêtements', 'Sneakers', 'Sacs'];
+  const CATEGORIES_MODE = ['Article'];
+  const CATEGORY_ORDER = ['Billetterie', 'Article', 'Pokémon / TCG'];
 
   function updatePrixHint() {
     if (categorieSelect.value !== 'Billetterie') {
@@ -383,7 +387,6 @@
 
   categorieSelect.addEventListener('change', () => {
     const val = categorieSelect.value;
-    categorieAutre.style.display = val === 'autre' ? 'block' : 'none';
 
     fieldsBilletterie.style.display = val === 'Billetterie' ? 'block' : 'none';
     fieldsMode.style.display = CATEGORIES_MODE.includes(val) ? 'block' : 'none';
@@ -412,14 +415,51 @@
       return;
     }
 
-    // Les articles vendus descendent en bas de la liste
+    // Tri : par catégorie (alphabétique), puis vendu en dernier dans chaque catégorie
     data.sort((a, b) => {
+      const catCompare = a.categorie.localeCompare(b.categorie);
+      if (catCompare !== 0) return catCompare;
       if (a.statut === 'vendu' && b.statut !== 'vendu') return 1;
       if (a.statut !== 'vendu' && b.statut === 'vendu') return -1;
-      return 0;
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+
+    // Tri : disponibles/réservés groupés par catégorie, vendus toujours en dernier
+    data.sort((a, b) => {
+      const aVendu = a.statut === 'vendu' ? 1 : 0;
+      const bVendu = b.statut === 'vendu' ? 1 : 0;
+      if (aVendu !== bVendu) return aVendu - bVendu;
+
+      const aIdx = CATEGORY_ORDER.indexOf(a.categorie);
+      const bIdx = CATEGORY_ORDER.indexOf(b.categorie);
+      const aRank = aIdx === -1 ? CATEGORY_ORDER.length : aIdx;
+      const bRank = bIdx === -1 ? CATEGORY_ORDER.length : bIdx;
+      if (aRank !== bRank) return aRank - bRank;
+
+      return 0; // déjà trié par date d'ajout (le plus récent d'abord) via la requête
     });
 
     listEl.innerHTML = '';
+    let currentSection = null;
+
+    data.forEach(p => {
+      const section = p.statut === 'vendu' ? 'Vendus' : (p.categorie || 'Autre');
+      if (section !== currentSection) {
+        const header = document.createElement('div');
+        header.className = 'category-header';
+        header.textContent = section;
+        listEl.appendChild(header);
+        currentSection = section;
+      }
+    let currentCategorie = null;
+    data.forEach(p => {
+      if (p.categorie !== currentCategorie) {
+        currentCategorie = p.categorie;
+        const header = document.createElement('div');
+        header.className = 'categorie-header';
+        header.textContent = currentCategorie;
+        listEl.appendChild(header);
+      }
     data.forEach(p => {
       const card = document.createElement('div');
       card.className = 'item-card' + (p.statut === 'vendu' ? ' vendu' : '');
@@ -544,9 +584,7 @@
     msgEl.textContent = '';
     msgEl.className = '';
 
-    const categorieValue = categorieSelect.value === 'autre'
-      ? categorieAutre.value.trim()
-      : categorieSelect.value;
+    const categorieValue = categorieSelect.value;
 
     let details = {};
     let prixFinal = document.getElementById('prix').value;
@@ -600,7 +638,6 @@
     msgEl.textContent = 'Article ajouté.';
     msgEl.className = 'ok';
     formEl.reset();
-    categorieAutre.style.display = 'none';
     fieldsBilletterie.style.display = 'none';
     fieldsMode.style.display = 'none';
     labelNom.textContent = 'Nom *';
