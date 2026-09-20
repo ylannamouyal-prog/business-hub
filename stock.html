@@ -228,7 +228,7 @@
       <div class="panel">
         <h2>Ajouter un article</h2>
         <form id="produit-form">
-          <label for="nom">Nom *</label>
+          <label for="nom" id="label-nom">Nom *</label>
           <input id="nom" required placeholder="Rolex Datejust">
 
           <label for="categorie">Catégorie *</label>
@@ -244,6 +244,27 @@
             <option value="autre">Autre…</option>
           </select>
           <input id="categorie_autre" placeholder="Précise la catégorie" style="display:none; margin-top:8px;">
+
+          <!-- Champs spécifiques BILLETTERIE -->
+          <div id="fields-billetterie" style="display:none;">
+            <label for="evt_lieu">Lieu</label>
+            <input id="evt_lieu" placeholder="Stade de France, Défense Arena...">
+
+            <label for="evt_date">Date de l'événement</label>
+            <input id="evt_date" type="date">
+
+            <label for="evt_places">Nombre de places</label>
+            <input id="evt_places" type="number" min="1">
+
+            <label for="evt_details">Détails places</label>
+            <input id="evt_details" placeholder="Catégorie 4, places 1 et 2, rang 92">
+          </div>
+
+          <!-- Champs spécifiques VÊTEMENTS / SNEAKERS -->
+          <div id="fields-mode" style="display:none;">
+            <label for="mode_lieu_achat">Lieu d'achat</label>
+            <input id="mode_lieu_achat" placeholder="Vinted, boutique, Vestiaire Collective...">
+          </div>
 
           <label for="marque">Marque</label>
           <input id="marque" placeholder="Rolex">
@@ -333,8 +354,27 @@
 
   const categorieSelect = document.getElementById('categorie');
   const categorieAutre = document.getElementById('categorie_autre');
+  const fieldsBilletterie = document.getElementById('fields-billetterie');
+  const fieldsMode = document.getElementById('fields-mode');
+  const labelNom = document.getElementById('label-nom');
+  const nomInput = document.getElementById('nom');
+
+  const CATEGORIES_MODE = ['Vêtements', 'Sneakers', 'Sacs'];
+
   categorieSelect.addEventListener('change', () => {
-    categorieAutre.style.display = categorieSelect.value === 'autre' ? 'block' : 'none';
+    const val = categorieSelect.value;
+    categorieAutre.style.display = val === 'autre' ? 'block' : 'none';
+
+    fieldsBilletterie.style.display = val === 'Billetterie' ? 'block' : 'none';
+    fieldsMode.style.display = CATEGORIES_MODE.includes(val) ? 'block' : 'none';
+
+    if (val === 'Billetterie') {
+      labelNom.textContent = "Nom de l'événement *";
+      nomInput.placeholder = 'Finale Ligue des Champions';
+    } else {
+      labelNom.textContent = 'Nom *';
+      nomInput.placeholder = 'Rolex Datejust';
+    }
   });
 
   async function loadProduits() {
@@ -362,10 +402,21 @@
       card.className = 'item-card' + (p.statut === 'vendu' ? ' vendu' : '');
       const objectifLabel = p.objectif === 'investissement' ? '💼 Investissement'
         : p.objectif === 'revente_rapide' ? '⚡ Revente rapide' : '';
+
+      let detailsLine = '';
+      const d = p.details || {};
+      if (p.categorie === 'Billetterie' && (d.lieu || d.date_evenement || d.details_places)) {
+        detailsLine = [d.lieu, d.date_evenement, d.nombre_places ? d.nombre_places + ' place(s)' : null, d.details_places]
+          .filter(Boolean).join(' · ');
+      } else if (d.lieu_achat) {
+        detailsLine = 'Acheté sur ' + d.lieu_achat;
+      }
+
       card.innerHTML = `
         <div class="info">
           <div class="name">${p.nom}</div>
           <div class="meta">${p.categorie}${p.marque ? ' · ' + p.marque : ''} · <span class="price">${p.prix} €</span></div>
+          ${detailsLine ? `<div class="objectif">${detailsLine}</div>` : ''}
           ${objectifLabel ? `<div class="objectif">${objectifLabel}</div>` : ''}
         </div>
         <select class="statut-select" data-id="${p.id}" data-nom="${p.nom}" data-categorie="${p.categorie}" data-marque="${p.marque || ''}" data-prix="${p.prix}" data-current="${p.statut}">
@@ -469,6 +520,20 @@
       ? categorieAutre.value.trim()
       : categorieSelect.value;
 
+    let details = {};
+    if (categorieValue === 'Billetterie') {
+      details = {
+        lieu: document.getElementById('evt_lieu').value.trim() || null,
+        date_evenement: document.getElementById('evt_date').value || null,
+        nombre_places: document.getElementById('evt_places').value || null,
+        details_places: document.getElementById('evt_details').value.trim() || null,
+      };
+    } else if (CATEGORIES_MODE.includes(categorieValue)) {
+      details = {
+        lieu_achat: document.getElementById('mode_lieu_achat').value.trim() || null,
+      };
+    }
+
     const payload = {
       nom: document.getElementById('nom').value.trim(),
       categorie: categorieValue,
@@ -476,6 +541,7 @@
       prix: document.getElementById('prix').value,
       type_produit: document.getElementById('type_produit').value || null,
       objectif: document.getElementById('objectif').value || null,
+      details: details,
     };
 
     if (!payload.nom || !payload.categorie || !payload.prix) {
@@ -501,6 +567,9 @@
     msgEl.className = 'ok';
     formEl.reset();
     categorieAutre.style.display = 'none';
+    fieldsBilletterie.style.display = 'none';
+    fieldsMode.style.display = 'none';
+    labelNom.textContent = 'Nom *';
     loadProduits();
     runMatching(data);
   });
