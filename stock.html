@@ -250,6 +250,9 @@
   .match-checkbox-label .match-head { flex: 1; }
   .match-checkbox { width: auto; flex-shrink: 0; }
 
+  .quota-warning { font-size: 12px; color: var(--danger); margin-top: 4px; }
+  .quota-info { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
+
   .campagne-msg-item {
     border-top: 1px solid var(--border);
     padding-top: 10px;
@@ -834,6 +837,24 @@
     return `Salut ${client.prenom}, j'ai reçu ${produit.nom}${prixTxt}.${phraseRaison} Si tu veux, je peux t'envoyer les photos et les détails.`;
   }
 
+  async function getCompteursMensuels() {
+    const debutMois = new Date();
+    debutMois.setDate(1);
+    debutMois.setHours(0, 0, 0, 0);
+
+    const { data: propositions } = await sb
+      .from('propositions')
+      .select('client_id, date_proposition')
+      .gte('date_proposition', debutMois.toISOString());
+
+    const compteurs = {};
+    (propositions || []).forEach(p => {
+      if (!p.date_proposition) return;
+      compteurs[p.client_id] = (compteurs[p.client_id] || 0) + 1;
+    });
+    return compteurs;
+  }
+
   async function runMatching(produit) {
     const { data: clientsRaw, error } = await sb.from('clients').select('*');
     const clients = (clientsRaw || []).filter(c => c.recoit_propositions !== false);
@@ -846,8 +867,17 @@
       achatsParClient[a.client_id].push(a);
     });
 
+    const compteursMensuels = await getCompteursMensuels();
+
     const matches = clients
-      .map(client => ({ client, ...computeMatch(client, produit, achatsParClient[client.id]) }))
+      .map(client => {
+        const m = { client, ...computeMatch(client, produit, achatsParClient[client.id]) };
+        const max = client.frequence_max_par_mois != null ? Number(client.frequence_max_par_mois) : null;
+        const compte = compteursMensuels[client.id] || 0;
+        m.quotaAtteint = max != null && compte >= max;
+        m.quotaInfo = max != null ? `${compte}/${max} ce mois-ci` : null;
+        return m;
+      })
       .filter(m => m.score > 0)
       .sort((a, b) => b.score - a.score);
 
@@ -868,12 +898,14 @@
       ${matches.map((m, i) => `
         <div class="match-card ${m.score < 40 ? 'low' : ''}">
           <label class="match-checkbox-label">
-            <input type="checkbox" class="match-checkbox" data-index="${i}">
+            <input type="checkbox" class="match-checkbox" data-index="${i}" ${m.quotaAtteint ? 'disabled' : ''}>
             <div class="match-head">
               <span class="match-name">${m.client.prenom} ${m.client.nom || ''}</span>
               <span class="match-score">${m.score}%</span>
             </div>
           </label>
+          ${m.quotaAtteint ? `<div class="quota-warning">🚫 Quota mensuel atteint (${m.quotaInfo})</div>`
+            : m.quotaInfo ? `<div class="quota-info">${m.quotaInfo}</div>` : ''}
           <div class="match-reasons">${m.reasons.map(r => `<div>✓ ${r}</div>`).join('')}</div>
           <button type="button" class="msg-btn" data-index="${i}">✉️ Préparer un message</button>
           <div class="msg-box" id="msg-box-${i}" style="display:none;">
@@ -888,8 +920,8 @@
     matchPanel.style.display = 'block';
 
     document.getElementById('campagne-tout').addEventListener('click', () => {
-      const boxes = matchResults.querySelectorAll('.match-checkbox');
-      const tousCoches = [...boxes].every(b => b.checked);
+      const boxes = [...matchResults.querySelectorAll('.match-checkbox')].filter(b => !b.disabled);
+      const tousCoches = boxes.every(b => b.checked);
       boxes.forEach(b => { b.checked = !tousCoches; });
     });
 
@@ -925,9 +957,15 @@
     });
 
     document.getElementById('campagne-proposer').addEventListener('click', async () => {
-      const selectionnes = [...matchResults.querySelectorAll('.match-checkbox:checked')].map(b => parseInt(b.dataset.index));
+      let selectionnes = [...matchResults.querySelectorAll('.match-checkbox:checked')].map(b => parseInt(b.dataset.index));
       if (!selectionnes.length) {
         alert('Sélectionne au moins un client.');
+        return;
+      }
+      const bloques = selectionnes.filter(i => currentMatches[i].quotaAtteint);
+      selectionnes = selectionnes.filter(i => !currentMatches[i].quotaAtteint);
+      if (!selectionnes.length) {
+        alert('Tous les clients sélectionnés ont déjà atteint leur quota mensuel.');
         return;
       }
       const lignes = selectionnes.map(i => {
@@ -946,7 +984,9 @@
         alert('Erreur : ' + error.message);
         return;
       }
-      alert(`${lignes.length} client(s) marqué(s) comme proposé(s). Retrouve le suivi dans l'onglet Opportunités.`);
+      let message = `${lignes.length} client(s) marqué(s) comme proposé(s). Retrouve le suivi dans l'onglet Opportunités.`;
+      if (bloques.length) message += `\n${bloques.length} client(s) ignoré(s) car quota mensuel atteint.`;
+      alert(message);
     });
 
     matchResults.querySelectorAll('.msg-btn').forEach(btn => {
