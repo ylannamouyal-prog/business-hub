@@ -128,6 +128,17 @@
   .item-card .name { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 600; }
   .item-card .meta { color: var(--text-dim); font-size: 13px; margin-top: 3px; }
   .item-card .price { color: var(--gold); font-weight: 600; }
+  .item-card .objectif { font-size: 11.5px; color: var(--text-faint); margin-top: 4px; }
+
+  .item-card { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .item-card .info { flex: 1; }
+  .item-card.vendu { opacity: 0.55; }
+
+  .statut-select {
+    width: auto;
+    padding: 6px 8px;
+    font-size: 12.5px;
+  }
 
   .empty { color: var(--text-faint); font-size: 14px; padding: 20px 0; text-align: center; }
 
@@ -176,7 +187,18 @@
           <input id="nom" required placeholder="Rolex Datejust">
 
           <label for="categorie">Catégorie *</label>
-          <input id="categorie" required placeholder="montres, billetterie, sneakers...">
+          <select id="categorie" required>
+            <option value="">— Choisir —</option>
+            <option value="Montres">Montres</option>
+            <option value="Billetterie">Billetterie</option>
+            <option value="Sneakers">Sneakers</option>
+            <option value="Vêtements">Vêtements</option>
+            <option value="Sacs">Sacs</option>
+            <option value="Pokémon / TCG">Pokémon / TCG</option>
+            <option value="Bijoux">Bijoux</option>
+            <option value="autre">Autre…</option>
+          </select>
+          <input id="categorie_autre" placeholder="Précise la catégorie" style="display:none; margin-top:8px;">
 
           <label for="marque">Marque</label>
           <input id="marque" placeholder="Rolex">
@@ -198,6 +220,13 @@
               </select>
             </div>
           </div>
+
+          <label for="objectif">Objectif</label>
+          <select id="objectif">
+            <option value="">—</option>
+            <option value="investissement">Investissement (garder / faire fructifier)</option>
+            <option value="revente_rapide">Revente rapide</option>
+          </select>
 
           <button type="submit" class="primary">Ajouter au stock</button>
           <div id="form-msg"></div>
@@ -232,6 +261,12 @@
   const matchPanel = document.getElementById('match-panel');
   const matchResults = document.getElementById('match-results');
 
+  const categorieSelect = document.getElementById('categorie');
+  const categorieAutre = document.getElementById('categorie_autre');
+  categorieSelect.addEventListener('change', () => {
+    categorieAutre.style.display = categorieSelect.value === 'autre' ? 'block' : 'none';
+  });
+
   async function loadProduits() {
     const { data, error } = await sb.from('produits').select('*').order('created_at', { ascending: false });
 
@@ -246,12 +281,35 @@
     listEl.innerHTML = '';
     data.forEach(p => {
       const card = document.createElement('div');
-      card.className = 'item-card';
+      card.className = 'item-card' + (p.statut === 'vendu' ? ' vendu' : '');
+      const objectifLabel = p.objectif === 'investissement' ? '💼 Investissement'
+        : p.objectif === 'revente_rapide' ? '⚡ Revente rapide' : '';
       card.innerHTML = `
-        <div class="name">${p.nom}</div>
-        <div class="meta">${p.categorie}${p.marque ? ' · ' + p.marque : ''} · <span class="price">${p.prix} €</span></div>
+        <div class="info">
+          <div class="name">${p.nom}</div>
+          <div class="meta">${p.categorie}${p.marque ? ' · ' + p.marque : ''} · <span class="price">${p.prix} €</span></div>
+          ${objectifLabel ? `<div class="objectif">${objectifLabel}</div>` : ''}
+        </div>
+        <select class="statut-select" data-id="${p.id}">
+          <option value="disponible" ${p.statut === 'disponible' ? 'selected' : ''}>Disponible</option>
+          <option value="reserve" ${p.statut === 'reserve' ? 'selected' : ''}>Réservé</option>
+          <option value="vendu" ${p.statut === 'vendu' ? 'selected' : ''}>Vendu</option>
+        </select>
       `;
       listEl.appendChild(card);
+    });
+
+    listEl.querySelectorAll('.statut-select').forEach(sel => {
+      sel.addEventListener('change', async (e) => {
+        const { error } = await sb.from('produits')
+          .update({ statut: e.target.value })
+          .eq('id', e.target.dataset.id);
+        if (error) {
+          alert('Erreur lors de la mise à jour : ' + error.message);
+          return;
+        }
+        loadProduits();
+      });
     });
   }
 
@@ -323,12 +381,17 @@
     msgEl.textContent = '';
     msgEl.className = '';
 
+    const categorieValue = categorieSelect.value === 'autre'
+      ? categorieAutre.value.trim()
+      : categorieSelect.value;
+
     const payload = {
       nom: document.getElementById('nom').value.trim(),
-      categorie: document.getElementById('categorie').value.trim(),
+      categorie: categorieValue,
       marque: document.getElementById('marque').value.trim() || null,
       prix: document.getElementById('prix').value,
       type_produit: document.getElementById('type_produit').value || null,
+      objectif: document.getElementById('objectif').value || null,
     };
 
     if (!payload.nom || !payload.categorie || !payload.prix) {
@@ -353,6 +416,7 @@
     msgEl.textContent = 'Article ajouté.';
     msgEl.className = 'ok';
     formEl.reset();
+    categorieAutre.style.display = 'none';
     loadProduits();
     runMatching(data);
   });
