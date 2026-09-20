@@ -379,6 +379,10 @@
         <input id="marques" placeholder="Rolex, Nike, Jordan">
         <div class="hint">Séparées par des virgules</div>
 
+        <label for="centres_interet">Centres d'intérêt / sports</label>
+        <input id="centres_interet" placeholder="Football, Tennis, Basketball...">
+        <div class="hint">Séparées par des virgules — utilisé pour proposer des événements sportifs pertinents</div>
+
         <div class="row2">
           <div>
             <label for="budget_min">Budget min (€)</label>
@@ -463,6 +467,13 @@
     <div class="detail-section">
       <h4>Préférences</h4>
       <div id="detail-prefs">—</div>
+    </div>
+
+    <div class="detail-section">
+      <h4>Centres d'intérêt / sports</h4>
+      <div id="detail-centres-interet-chips"></div>
+      <input id="detail-centres-interet" placeholder="Football, Tennis, Basketball..." style="margin-top:8px;">
+      <div class="hint">Séparées par des virgules — utilisé pour proposer des événements sportifs pertinents</div>
     </div>
 
     <div class="detail-section" id="detail-suggestions-section" style="display:none;">
@@ -682,6 +693,25 @@
       input.onblur = sauvegarderTaillesNotes;
     });
 
+    const centresInteretInput = document.getElementById('detail-centres-interet');
+    const centresInteretChips = document.getElementById('detail-centres-interet-chips');
+    function afficherCentresInteretChips() {
+      centresInteretChips.innerHTML = (client.centres_interet || []).map(c => `<span class="chip">${c}</span>`).join('')
+        || '<span class="hint">Aucun renseigné</span>';
+    }
+    centresInteretInput.value = (client.centres_interet || []).join(', ');
+    afficherCentresInteretChips();
+    centresInteretInput.onblur = async () => {
+      const nouvellesValeurs = toArray(centresInteretInput.value);
+      const { error } = await sb.from('clients').update({ centres_interet: nouvellesValeurs }).eq('id', client.id);
+      if (error) {
+        alert('Erreur : ' + error.message);
+        return;
+      }
+      client.centres_interet = nouvellesValeurs;
+      afficherCentresInteretChips();
+    };
+
     const cats = (client.categories_preferees || []).map(c => `<span class="chip">${c}</span>`).join('');
     const marques = (client.marques_preferees || []).map(c => `<span class="chip">${c}</span>`).join('');
     document.getElementById('detail-prefs').innerHTML = (cats + marques) || '<span class="hint">Aucune préférence renseignée</span>';
@@ -886,6 +916,7 @@
       telephone: document.getElementById('telephone').value.trim() || null,
       categories_preferees: toArray(document.getElementById('categories').value),
       marques_preferees: toArray(document.getElementById('marques').value),
+      centres_interet: toArray(document.getElementById('centres_interet').value),
       budget_min: document.getElementById('budget_min').value || null,
       budget_max: document.getElementById('budget_max').value || null,
       recoit_propositions: document.getElementById('recoit_propositions').checked,
