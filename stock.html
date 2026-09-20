@@ -436,15 +436,6 @@
       return;
     }
 
-    // Tri : par catégorie (alphabétique), puis vendu en dernier dans chaque catégorie
-    data.sort((a, b) => {
-      const catCompare = a.categorie.localeCompare(b.categorie);
-      if (catCompare !== 0) return catCompare;
-      if (a.statut === 'vendu' && b.statut !== 'vendu') return 1;
-      if (a.statut !== 'vendu' && b.statut === 'vendu') return -1;
-      return new Date(b.created_at) - new Date(a.created_at);
-    });
-
     // Tri : disponibles/réservés groupés par catégorie, vendus toujours en dernier
     data.sort((a, b) => {
       const aVendu = a.statut === 'vendu' ? 1 : 0;
@@ -472,16 +463,7 @@
         listEl.appendChild(header);
         currentSection = section;
       }
-    let currentCategorie = null;
-    data.forEach(p => {
-      if (p.categorie !== currentCategorie) {
-        currentCategorie = p.categorie;
-        const header = document.createElement('div');
-        header.className = 'categorie-header';
-        header.textContent = currentCategorie;
-        listEl.appendChild(header);
-      }
-    data.forEach(p => {
+
       const card = document.createElement('div');
       card.className = 'item-card' + (p.statut === 'vendu' ? ' vendu' : '');
       const objectifLabel = p.objectif === 'investissement' ? '💼 Investissement'
