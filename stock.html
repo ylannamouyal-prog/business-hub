@@ -349,6 +349,11 @@
     </div>
 
     <div>
+      <div class="panel" id="demande-match-panel" style="display:none; border-left: 3px solid var(--danger);">
+        <h2>🚨 Match parfait — demandes actives</h2>
+        <div id="demande-match-results"></div>
+      </div>
+
       <div class="panel" id="match-panel" style="display:none;">
         <h2>🎯 Clients potentiels</h2>
         <div id="match-results"></div>
@@ -598,6 +603,62 @@
     return { score, reasons };
   }
 
+  const demandeMatchPanel = document.getElementById('demande-match-panel');
+  const demandeMatchResults = document.getElementById('demande-match-results');
+  let currentDemandeMatches = [];
+
+  async function checkDemandesActives(produit) {
+    const { data: demandes, error } = await sb
+      .from('demandes_client')
+      .select('*, clients(prenom, nom)')
+      .eq('statut', 'recherche');
+
+    if (error || !demandes || !demandes.length) {
+      demandeMatchPanel.style.display = 'none';
+      return;
+    }
+
+    const matches = demandes.filter(d => {
+      const catMatch = d.categorie && produit.categorie && d.categorie.toLowerCase() === produit.categorie.toLowerCase();
+      const marqueMatch = d.marque && produit.marque && d.marque.toLowerCase() === produit.marque.toLowerCase();
+      const nomMatch = produit.nom.toLowerCase().includes(d.description.toLowerCase()) || d.description.toLowerCase().includes(produit.nom.toLowerCase());
+      const budgetOk = d.budget_max == null || Number(produit.prix) <= Number(d.budget_max);
+      return (catMatch || marqueMatch || nomMatch) && budgetOk;
+    });
+
+    currentDemandeMatches = matches;
+
+    if (!matches.length) {
+      demandeMatchPanel.style.display = 'none';
+      return;
+    }
+
+    demandeMatchResults.innerHTML = matches.map((d, i) => `
+      <div class="match-card">
+        <div class="match-head">
+          <span class="match-name">${d.clients?.prenom || '?'} ${d.clients?.nom || ''}</span>
+        </div>
+        <div class="match-reasons"><div>✓ Recherchait : « ${d.description} »</div></div>
+        <button type="button" class="msg-btn" data-index="${i}" data-kind="demande-trouve">Marquer comme trouvée</button>
+      </div>
+    `).join('');
+
+    demandeMatchResults.querySelectorAll('[data-kind="demande-trouve"]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const i = btn.dataset.index;
+        const d = currentDemandeMatches[i];
+        const { error } = await sb.from('demandes_client').update({ statut: 'trouve' }).eq('id', d.id);
+        if (error) {
+          alert('Erreur : ' + error.message);
+          return;
+        }
+        checkDemandesActives(produit);
+      });
+    });
+
+    demandeMatchPanel.style.display = 'block';
+  }
+
   let currentMatches = [];
   let currentMatchProduit = null;
 
@@ -741,6 +802,7 @@
     prixHint.style.display = 'none';
     loadProduits();
     runMatching(data);
+    checkDemandesActives(data);
   });
 
   // --- Modale de vente ---
