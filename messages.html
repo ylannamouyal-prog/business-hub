@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Business Hub — Messages</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #14120f;
+    --bg-panel: #1c1914;
+    --bg-panel-raised: #242019;
+    --border: #332d24;
+    --gold: #c9a35f;
+    --gold-soft: rgba(201, 163, 95, 0.14);
+    --text: #ede7db;
+    --text-dim: #a89d89;
+    --text-faint: #6f6455;
+    --danger: #c47456;
+    --radius: 3px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, sans-serif; font-size: 15px; line-height: 1.5; }
+  .shell { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
+
+  header.top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+  header.top h1 { font-family: 'Fraunces', serif; font-weight: 600; font-size: 28px; margin: 0; }
+  header.top .tag { color: var(--text-faint); font-size: 13px; }
+
+  nav.tabs { display: flex; gap: 18px; margin: 20px 0 32px; flex-wrap: wrap; }
+  nav.tabs a { color: var(--text-dim); text-decoration: none; font-size: 14px; padding-bottom: 6px; border-bottom: 2px solid transparent; }
+  nav.tabs a.active { color: var(--gold); border-color: var(--gold); }
+
+  .panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px;
+    margin-bottom: 24px;
+  }
+  .panel h2 { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 600; margin: 0 0 16px; color: var(--gold); }
+
+  label { display: block; font-size: 12.5px; color: var(--text-dim); margin: 14px 0 5px; }
+  label:first-of-type { margin-top: 0; }
+
+  input, select, textarea {
+    width: 100%;
+    background: var(--bg-panel-raised);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 10px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-family: inherit;
+  }
+  textarea { resize: vertical; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--gold); }
+
+  .hint { font-size: 11.5px; color: var(--text-faint); margin-top: 4px; }
+
+  button.primary {
+    margin-top: 16px;
+    background: var(--gold);
+    color: #1c1914;
+    border: none;
+    padding: 10px 16px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+  }
+
+  #form-msg { margin-top: 10px; font-size: 13px; }
+  #form-msg.error { color: var(--danger); }
+  #form-msg.ok { color: var(--gold); }
+
+  .template-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 10px;
+  }
+  .template-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .template-titre { font-family: 'Fraunces', serif; font-size: 15px; font-weight: 600; }
+  .template-contexte { font-size: 11px; color: var(--gold); background: var(--gold-soft); padding: 2px 8px; border-radius: var(--radius); }
+  .template-contenu { font-size: 13px; color: var(--text-dim); margin-top: 8px; white-space: pre-wrap; }
+
+  .template-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .template-actions button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 5px 10px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+  }
+  .template-actions button:hover { border-color: var(--gold); color: var(--gold); }
+  .template-actions .del:hover { border-color: var(--danger); color: var(--danger); }
+
+  .empty { color: var(--text-faint); font-size: 14px; padding: 20px 0; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <header class="top">
+    <h1>Business Hub</h1>
+    <span class="tag">Messages — AYL Conciergerie / NexTCG</span>
+  </header>
+
+  <nav class="tabs">
+    <a href="index.html">Clients</a>
+    <a href="stock.html">Stock</a>
+    <a href="opportunites.html">Opportunités</a>
+    <a href="tableau-de-bord.html">Tableau de bord</a>
+    <a href="messages.html" class="active">Messages</a>
+  </nav>
+
+  <div class="panel">
+    <h2 id="form-title">Ajouter un modèle de message</h2>
+    <form id="template-form">
+      <input type="hidden" id="edit-id">
+
+      <label for="titre">Titre</label>
+      <input id="titre" placeholder="Ex: Relance J+3, Remerciement post-vente..." required>
+
+      <label for="contexte">Contexte</label>
+      <select id="contexte">
+        <option value="">—</option>
+        <option value="prospection">Prospection</option>
+        <option value="relance">Relance</option>
+        <option value="proposition">Proposition produit</option>
+        <option value="negociation">Négociation</option>
+        <option value="remerciement">Remerciement / fidélisation</option>
+        <option value="autre">Autre</option>
+      </select>
+
+      <label for="contenu">Message</label>
+      <textarea id="contenu" rows="5" placeholder="Salut {prenom}, j'ai reçu {produit} à {prix}..." required></textarea>
+      <div class="hint">Utilise {prenom}, {nom}, {produit}, {prix} et {raison} — ils seront remplacés automatiquement par les infos du client/produit au moment de l'envoi.</div>
+
+      <button type="submit" class="primary" id="submit-btn">+ Enregistrer le modèle</button>
+      <button type="button" class="primary" id="cancel-edit" style="display:none; background:transparent; color:var(--text-dim); border:1px solid var(--border);">Annuler la modification</button>
+      <div id="form-msg"></div>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>Tes modèles</h2>
+    <div id="template-list"><div class="empty">Chargement…</div></div>
+  </div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ziacdbshrsklftxlkcyo.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppYWNkYnNocnNrbGZ0eGxrY3lvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0MDcyOTUsImV4cCI6MjEwNDk4MzI5NX0.9gMbDnuJ9ZMHIR-a-LUuq1iyD-Un-qaLOTVfZLOQZ8E";
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const listEl = document.getElementById('template-list');
+  const formEl = document.getElementById('template-form');
+  const msgEl = document.getElementById('form-msg');
+  const editIdInput = document.getElementById('edit-id');
+  const formTitle = document.getElementById('form-title');
+  const submitBtn = document.getElementById('submit-btn');
+  const cancelEditBtn = document.getElementById('cancel-edit');
+
+  const CONTEXTE_LABELS = {
+    prospection: 'Prospection',
+    relance: 'Relance',
+    proposition: 'Proposition produit',
+    negociation: 'Négociation',
+    remerciement: 'Remerciement / fidélisation',
+    autre: 'Autre',
+  };
+
+  async function loadTemplates() {
+    const { data, error } = await sb.from('message_templates').select('*').order('created_at', { ascending: false });
+    if (error) {
+      listEl.innerHTML = `<div class="empty">Erreur : ${error.message}</div>`;
+      return;
+    }
+    if (!data.length) {
+      listEl.innerHTML = `<div class="empty">Aucun modèle enregistré pour l'instant.</div>`;
+      return;
+    }
+    listEl.innerHTML = data.map(t => `
+      <div class="template-card">
+        <div class="template-head">
+          <span class="template-titre">${t.titre}</span>
+          ${t.contexte ? `<span class="template-contexte">${CONTEXTE_LABELS[t.contexte] || t.contexte}</span>` : ''}
+        </div>
+        <div class="template-contenu">${t.contenu}</div>
+        <div class="template-actions">
+          <button type="button" class="edit-btn" data-id="${t.id}">✏️ Modifier</button>
+          <button type="button" class="del" data-id="${t.id}">🗑️ Supprimer</button>
+        </div>
+      </div>
+    `).join('');
+
+    listEl.querySelectorAll('.edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const t = data.find(x => x.id === btn.dataset.id);
+        editIdInput.value = t.id;
+        document.getElementById('titre').value = t.titre;
+        document.getElementById('contexte').value = t.contexte || '';
+        document.getElementById('contenu').value = t.contenu;
+        formTitle.textContent = 'Modifier le modèle';
+        submitBtn.textContent = 'Enregistrer les modifications';
+        cancelEditBtn.style.display = 'inline-block';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    });
+
+    listEl.querySelectorAll('.del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Supprimer ce modèle ?')) return;
+        const { error } = await sb.from('message_templates').delete().eq('id', btn.dataset.id);
+        if (error) { alert('Erreur : ' + error.message); return; }
+        loadTemplates();
+      });
+    });
+  }
+
+  function resetForm() {
+    formEl.reset();
+    editIdInput.value = '';
+    formTitle.textContent = 'Ajouter un modèle de message';
+    submitBtn.textContent = '+ Enregistrer le modèle';
+    cancelEditBtn.style.display = 'none';
+  }
+
+  cancelEditBtn.addEventListener('click', resetForm);
+
+  formEl.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    msgEl.textContent = '';
+    msgEl.className = '';
+
+    const payload = {
+      titre: document.getElementById('titre').value.trim(),
+      contexte: document.getElementById('contexte').value || null,
+      contenu: document.getElementById('contenu').value.trim(),
+    };
+
+    if (!payload.titre || !payload.contenu) {
+      msgEl.textContent = 'Titre et message sont obligatoires.';
+      msgEl.className = 'error';
+      return;
+    }
+
+    let error;
+    if (editIdInput.value) {
+      ({ error } = await sb.from('message_templates').update(payload).eq('id', editIdInput.value));
+    } else {
+      ({ error } = await sb.from('message_templates').insert(payload));
+    }
+
+    if (error) {
+      msgEl.textContent = 'Erreur : ' + error.message;
+      msgEl.className = 'error';
+      return;
+    }
+
+    msgEl.textContent = editIdInput.value ? 'Modèle mis à jour.' : 'Modèle ajouté.';
+    msgEl.className = 'ok';
+    resetForm();
+    loadTemplates();
+  });
+
+  loadTemplates();
+</script>
+
+</body>
+</html>
