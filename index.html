@@ -163,6 +163,17 @@
   }
   .filters input, .filters select { font-size: 13px; padding: 8px 9px; }
 
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .checkbox-label input { width: auto; }
+
   .client-list { display: flex; flex-direction: column; gap: 10px; }
 
   .client-card {
@@ -357,6 +368,11 @@
           </div>
         </div>
 
+        <label class="checkbox-label">
+          <input id="recoit_propositions" type="checkbox" checked>
+          Recevoir des propositions automatiques
+        </label>
+
         <button type="submit" class="primary">Ajouter le client</button>
         <div id="form-msg"></div>
       </form>
@@ -406,6 +422,11 @@
       <option value="premium">Premium</option>
       <option value="vip">⭐ VIP</option>
     </select>
+
+    <label class="checkbox-label" style="margin-top:0; margin-bottom:16px;">
+      <input id="detail-recoit-propositions" type="checkbox">
+      Recevoir des propositions automatiques
+    </label>
 
     <div class="detail-section">
       <h4>Préférences</h4>
@@ -569,6 +590,17 @@
       loadClients();
     };
 
+    const recoitCheckbox = document.getElementById('detail-recoit-propositions');
+    recoitCheckbox.checked = client.recoit_propositions !== false;
+    recoitCheckbox.onchange = async () => {
+      const { error } = await sb.from('clients').update({ recoit_propositions: recoitCheckbox.checked }).eq('id', client.id);
+      if (error) {
+        alert('Erreur : ' + error.message);
+        return;
+      }
+      client.recoit_propositions = recoitCheckbox.checked;
+    };
+
     const cats = (client.categories_preferees || []).map(c => `<span class="chip">${c}</span>`).join('');
     const marques = (client.marques_preferees || []).map(c => `<span class="chip">${c}</span>`).join('');
     document.getElementById('detail-prefs').innerHTML = (cats + marques) || '<span class="hint">Aucune préférence renseignée</span>';
@@ -705,6 +737,7 @@
       marques_preferees: toArray(document.getElementById('marques').value),
       budget_min: document.getElementById('budget_min').value || null,
       budget_max: document.getElementById('budget_max').value || null,
+      recoit_propositions: document.getElementById('recoit_propositions').checked,
     };
 
     if (!payload.prenom) {
