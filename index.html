@@ -354,6 +354,22 @@
       <h4>Historique d'achats</h4>
       <div id="detail-achats"></div>
     </div>
+
+    <div class="detail-section">
+      <h4>Demandes (sourcing)</h4>
+      <div id="detail-demandes"></div>
+
+      <form id="demande-form" style="margin-top:12px;">
+        <input id="demande-description" placeholder="Ex: Rolex Submariner" required>
+        <div class="row2" style="margin-top:8px;">
+          <input id="demande-categorie" placeholder="Catégorie (ex: Billetterie)">
+          <input id="demande-marque" placeholder="Marque (ex: Rolex)">
+        </div>
+        <input id="demande-budget" type="number" min="0" placeholder="Budget max (€)" style="margin-top:8px;">
+        <button type="submit" class="primary" style="margin-top:10px;">+ Enregistrer la demande</button>
+        <div id="demande-msg"></div>
+      </form>
+    </div>
   </div>
 </div>
 
@@ -440,7 +456,67 @@
     }
 
     document.getElementById('overlay').classList.add('open');
+    loadDemandes(client.id);
+    currentDetailClient = client;
   }
+
+  let currentDetailClient = null;
+
+  async function loadDemandes(clientId) {
+    const demandesEl = document.getElementById('detail-demandes');
+    demandesEl.innerHTML = 'Chargement…';
+
+    const { data: demandes, error } = await sb
+      .from('demandes_client')
+      .select('*')
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      demandesEl.innerHTML = `<div class="hint">Erreur : ${error.message}</div>`;
+      return;
+    }
+    if (!demandes.length) {
+      demandesEl.innerHTML = `<div class="hint">Aucune demande enregistrée.</div>`;
+      return;
+    }
+
+    const statutLabel = { recherche: '🔍 En recherche', trouve: '✅ Trouvé', annulee: '✕ Annulée' };
+    demandesEl.innerHTML = demandes.map(d => `
+      <div class="achat-line">
+        <span>${d.description} ${d.budget_max ? `<span class="hint">(≤ ${d.budget_max} €)</span>` : ''}</span>
+        <span class="hint">${statutLabel[d.statut] || d.statut}</span>
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('demande-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msgEl2 = document.getElementById('demande-msg');
+    msgEl2.textContent = '';
+    msgEl2.className = '';
+
+    const description = document.getElementById('demande-description').value.trim();
+    if (!description || !currentDetailClient) return;
+
+    const payload = {
+      client_id: currentDetailClient.id,
+      description,
+      categorie: document.getElementById('demande-categorie').value.trim() || null,
+      marque: document.getElementById('demande-marque').value.trim() || null,
+      budget_max: document.getElementById('demande-budget').value || null,
+    };
+
+    const { error } = await sb.from('demandes_client').insert(payload);
+    if (error) {
+      msgEl2.textContent = 'Erreur : ' + error.message;
+      msgEl2.className = 'error';
+      return;
+    }
+
+    document.getElementById('demande-form').reset();
+    loadDemandes(currentDetailClient.id);
+  });
 
   document.getElementById('detail-close').addEventListener('click', () => {
     document.getElementById('overlay').classList.remove('open');
