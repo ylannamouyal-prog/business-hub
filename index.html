@@ -153,6 +153,16 @@
   #form-msg.error { color: var(--danger); }
   #form-msg.ok { color: var(--gold); }
 
+  .filters {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 18px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .filters input, .filters select { font-size: 13px; padding: 8px 9px; }
+
   .client-list { display: flex; flex-direction: column; gap: 10px; }
 
   .client-card {
@@ -354,6 +364,27 @@
 
     <div class="panel">
       <h2>Clients enregistrés</h2>
+
+      <div class="filters">
+        <input id="filtre-recherche" placeholder="Rechercher un nom, email...">
+        <div class="row2">
+          <select id="filtre-statut">
+            <option value="">Tous les statuts</option>
+            <option value="standard">Standard</option>
+            <option value="actif">Actif</option>
+            <option value="premium">Premium</option>
+            <option value="vip">⭐ VIP</option>
+          </select>
+          <select id="filtre-tri">
+            <option value="recent">Plus récents</option>
+            <option value="depense_desc">Total dépensé (haut → bas)</option>
+            <option value="inactif">Sans achat depuis longtemps</option>
+            <option value="nom">Nom (A → Z)</option>
+          </select>
+        </div>
+        <input id="filtre-depense-min" type="number" min="0" placeholder="Total dépensé minimum (€)">
+      </div>
+
       <div id="client-list" class="client-list">
         <div class="empty">Chargement…</div>
       </div>
@@ -429,19 +460,77 @@
     return str.split(',').map(s => s.trim()).filter(Boolean);
   }
 
+  let allClients = [];
+
   async function loadClients() {
-    const { data, error } = await sb
-      .from('clients')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const [{ data: clients, error }, { data: achats }] = await Promise.all([
+      sb.from('clients').select('*').order('created_at', { ascending: false }),
+      sb.from('achats').select('*'),
+    ]);
 
     if (error) {
       listEl.innerHTML = `<div class="empty">Erreur de chargement : ${error.message}</div>`;
       return;
     }
 
+    const achatsParClient = {};
+    (achats || []).forEach(a => {
+      if (!achatsParClient[a.client_id]) achatsParClient[a.client_id] = [];
+      achatsParClient[a.client_id].push(a);
+    });
+
+    allClients = clients.map(client => {
+      const clientAchats = achatsParClient[client.id] || [];
+      const totalDepense = clientAchats.reduce((s, a) => s + Number(a.prix || 0), 0);
+      const dernierAchat = clientAchats.length
+        ? clientAchats.map(a => a.date_achat).sort().reverse()[0]
+        : null;
+      return { ...client, _totalDepense: totalDepense, _dernierAchat: dernierAchat };
+    });
+
+    applyFiltres();
+  }
+
+  function applyFiltres() {
+    const recherche = document.getElementById('filtre-recherche').value.trim().toLowerCase();
+    const statut = document.getElementById('filtre-statut').value;
+    const tri = document.getElementById('filtre-tri').value;
+    const depenseMin = parseFloat(document.getElementById('filtre-depense-min').value) || 0;
+
+    let filtered = allClients.filter(c => {
+      if (recherche) {
+        const hay = `${c.prenom} ${c.nom || ''} ${c.email || ''} ${c.telephone || ''}`.toLowerCase();
+        if (!hay.includes(recherche)) return false;
+      }
+      if (statut && c.statut !== statut) return false;
+      if (depenseMin > 0 && c._totalDepense < depenseMin) return false;
+      return true;
+    });
+
+    if (tri === 'depense_desc') {
+      filtered.sort((a, b) => b._totalDepense - a._totalDepense);
+    } else if (tri === 'nom') {
+      filtered.sort((a, b) => a.prenom.localeCompare(b.prenom));
+    } else if (tri === 'inactif') {
+      filtered.sort((a, b) => {
+        if (!a._dernierAchat && !b._dernierAchat) return 0;
+        if (!a._dernierAchat) return -1;
+        if (!b._dernierAchat) return 1;
+        return a._dernierAchat.localeCompare(b._dernierAchat); // plus ancien d'abord
+      });
+    }
+    // 'recent' garde l'ordre déjà trié par created_at
+
+    renderClients(filtered);
+  }
+
+  ['filtre-recherche', 'filtre-statut', 'filtre-tri', 'filtre-depense-min'].forEach(id => {
+    document.getElementById(id).addEventListener('input', applyFiltres);
+  });
+
+  function renderClients(data) {
     if (!data.length) {
-      listEl.innerHTML = `<div class="empty">Aucun client pour l'instant.</div>`;
+      listEl.innerHTML = `<div class="empty">Aucun client ne correspond.</div>`;
       return;
     }
 
@@ -452,10 +541,11 @@
       const cats = (client.categories_preferees || []).map(c => `<span class="chip">${c}</span>`).join('');
       const statutBadges = { actif: '● Actif', premium: '◆ Premium', vip: '⭐ VIP' };
       const badge = statutBadges[client.statut] ? `<span class="chip">${statutBadges[client.statut]}</span>` : '';
+      const depenseTxt = client._totalDepense > 0 ? `<span class="chip">${client._totalDepense.toLocaleString('fr-FR')} € dépensés</span>` : '';
       card.innerHTML = `
         <div class="name">${client.prenom} ${client.nom || ''} ${badge}</div>
         <div class="meta">${client.email || ''} ${client.telephone ? '· ' + client.telephone : ''}</div>
-        <div>${cats}</div>
+        <div>${cats}${depenseTxt}</div>
       `;
       card.addEventListener('click', () => openDetail(client));
       listEl.appendChild(card);
