@@ -245,12 +245,14 @@
   let activeMatches = [];
 
   async function loadOpportunites() {
-    const [{ data: clients }, { data: produits }, { data: propositions }, { data: achats }] = await Promise.all([
+    const [{ data: clientsRaw }, { data: produits }, { data: propositions }, { data: achats }] = await Promise.all([
       sb.from('clients').select('*'),
       sb.from('produits').select('*').neq('statut', 'vendu'),
       sb.from('propositions').select('*'),
       sb.from('achats').select('*'),
     ]);
+
+    const clients = (clientsRaw || []).filter(c => c.recoit_propositions !== false);
 
     if (!clients || !produits) {
       oppListEl.innerHTML = '<div class="empty">Erreur de chargement.</div>';
