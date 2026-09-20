@@ -140,6 +140,19 @@
     font-size: 12.5px;
   }
 
+  .item-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .icon-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 5px 8px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+  }
+  .icon-btn:hover { border-color: var(--gold); }
+  .delete-btn-icon:hover { border-color: var(--danger); }
+
   .empty { color: var(--text-faint); font-size: 14px; padding: 20px 0; text-align: center; }
 
   .category-header {
@@ -414,6 +427,55 @@
   </div>
 </div>
 
+<div class="overlay" id="edit-overlay">
+  <div class="modal">
+    <h3>Modifier l'article</h3>
+
+    <label for="edit-nom">Nom</label>
+    <input id="edit-nom">
+
+    <label for="edit-marque">Marque</label>
+    <input id="edit-marque">
+
+    <div class="row2">
+      <div>
+        <label for="edit-prix">Prix (€)</label>
+        <input id="edit-prix" type="number" min="0">
+      </div>
+      <div>
+        <label for="edit-quantite">Quantité en stock</label>
+        <input id="edit-quantite" type="number" min="0">
+      </div>
+    </div>
+
+    <label for="edit-type">Type</label>
+    <select id="edit-type">
+      <option value="">—</option>
+      <option value="occasion">Occasion</option>
+      <option value="neuf">Neuf</option>
+      <option value="edition_limitee">Édition limitée</option>
+      <option value="collector">Collector</option>
+      <option value="vip">VIP</option>
+    </select>
+
+    <label for="edit-objectif">Objectif</label>
+    <select id="edit-objectif">
+      <option value="">—</option>
+      <option value="investissement">Investissement</option>
+      <option value="revente_rapide">Revente rapide</option>
+    </select>
+
+    <div class="hint" style="margin-top:10px;">Les détails spécifiques (lieu, date d'événement, sport...) ne sont pas modifiables ici — supprime et recrée l'article si besoin de les changer.</div>
+
+    <div id="edit-msg"></div>
+
+    <div class="modal-actions">
+      <button class="cancel" id="edit-cancel">Annuler</button>
+      <button class="confirm" id="edit-confirm">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
 <script>
   const SUPABASE_URL = "https://ziacdbshrsklftxlkcyo.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppYWNkYnNocnNrbGZ0eGxrY3lvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0MDcyOTUsImV4cCI6MjEwNDk4MzI5NX0.9gMbDnuJ9ZMHIR-a-LUuq1iyD-Un-qaLOTVfZLOQZ8E";
@@ -541,13 +603,33 @@
           ${qteLine}
           ${objectifLabel ? `<div class="objectif">${objectifLabel}</div>` : ''}
         </div>
-        <select class="statut-select" data-id="${p.id}" data-nom="${p.nom}" data-categorie="${p.categorie}" data-marque="${p.marque || ''}" data-prix="${p.prix}" data-current="${p.statut}">
-          <option value="disponible" ${p.statut === 'disponible' ? 'selected' : ''}>Disponible</option>
-          <option value="reserve" ${p.statut === 'reserve' ? 'selected' : ''}>Réservé</option>
-          <option value="vendu" ${p.statut === 'vendu' ? 'selected' : ''}>Vendu</option>
-        </select>
+        <div class="item-actions">
+          <select class="statut-select" data-id="${p.id}" data-nom="${p.nom}" data-categorie="${p.categorie}" data-marque="${p.marque || ''}" data-prix="${p.prix}" data-current="${p.statut}">
+            <option value="disponible" ${p.statut === 'disponible' ? 'selected' : ''}>Disponible</option>
+            <option value="reserve" ${p.statut === 'reserve' ? 'selected' : ''}>Réservé</option>
+            <option value="vendu" ${p.statut === 'vendu' ? 'selected' : ''}>Vendu</option>
+          </select>
+          <button type="button" class="icon-btn edit-btn" data-id="${p.id}" title="Modifier">✏️</button>
+          <button type="button" class="icon-btn delete-btn-icon" data-id="${p.id}" data-nom="${p.nom}" title="Supprimer">🗑️</button>
+        </div>
       `;
       listEl.appendChild(card);
+    });
+
+    listEl.querySelectorAll('.edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => openEditModal(btn.dataset.id));
+    });
+
+    listEl.querySelectorAll('.delete-btn-icon').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`Supprimer définitivement "${btn.dataset.nom}" ? Cette action est irréversible.`)) return;
+        const { error } = await sb.from('produits').delete().eq('id', btn.dataset.id);
+        if (error) {
+          alert('Erreur : ' + error.message);
+          return;
+        }
+        loadProduits();
+      });
     });
 
     listEl.querySelectorAll('.statut-select').forEach(sel => {
@@ -1016,6 +1098,74 @@
     }
 
     closeVenteModal(false);
+    loadProduits();
+  });
+
+  // --- Modale d'édition ---
+  const editOverlay = document.getElementById('edit-overlay');
+  const editNom = document.getElementById('edit-nom');
+  const editMarque = document.getElementById('edit-marque');
+  const editPrix = document.getElementById('edit-prix');
+  const editQuantite = document.getElementById('edit-quantite');
+  const editType = document.getElementById('edit-type');
+  const editObjectif = document.getElementById('edit-objectif');
+  const editMsg = document.getElementById('edit-msg');
+  let currentEditId = null;
+
+  async function openEditModal(id) {
+    editMsg.textContent = '';
+    const { data: produit, error } = await sb.from('produits').select('*').eq('id', id).single();
+    if (error || !produit) {
+      alert('Erreur de chargement de l\'article.');
+      return;
+    }
+    currentEditId = id;
+    editNom.value = produit.nom || '';
+    editMarque.value = produit.marque || '';
+    editPrix.value = produit.prix ?? '';
+    editQuantite.value = produit.quantite_stock ?? '';
+    editType.value = produit.type_produit || '';
+    editObjectif.value = produit.objectif || '';
+    editOverlay.classList.add('open');
+  }
+
+  document.getElementById('edit-cancel').addEventListener('click', () => {
+    editOverlay.classList.remove('open');
+    currentEditId = null;
+  });
+  editOverlay.addEventListener('click', (e) => {
+    if (e.target.id === 'edit-overlay') {
+      editOverlay.classList.remove('open');
+      currentEditId = null;
+    }
+  });
+
+  document.getElementById('edit-confirm').addEventListener('click', async () => {
+    if (!currentEditId) return;
+    if (!editNom.value.trim() || !editPrix.value) {
+      editMsg.textContent = 'Nom et prix sont obligatoires.';
+      editMsg.className = 'error';
+      return;
+    }
+
+    const updates = {
+      nom: editNom.value.trim(),
+      marque: editMarque.value.trim() || null,
+      prix: editPrix.value,
+      quantite_stock: editQuantite.value || 0,
+      type_produit: editType.value || null,
+      objectif: editObjectif.value || null,
+    };
+
+    const { error } = await sb.from('produits').update(updates).eq('id', currentEditId);
+    if (error) {
+      editMsg.textContent = 'Erreur : ' + error.message;
+      editMsg.className = 'error';
+      return;
+    }
+
+    editOverlay.classList.remove('open');
+    currentEditId = null;
     loadProduits();
   });
 
