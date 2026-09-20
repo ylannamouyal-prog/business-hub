@@ -299,6 +299,10 @@
             <option value="revente_rapide">Revente rapide</option>
           </select>
 
+          <label for="quantite_stock">Quantité en stock</label>
+          <input id="quantite_stock" type="number" min="1" value="1">
+          <div class="hint">Utile si tu as plusieurs exemplaires du même article (ex: 4 t-shirts identiques)</div>
+
           <button type="submit" class="primary">Ajouter au stock</button>
           <div id="form-msg"></div>
         </form>
@@ -326,12 +330,29 @@
     <h3>Marquer comme vendu</h3>
     <div class="sub" id="vente-produit-nom">—</div>
 
-    <label for="vente-client">Client *</label>
-    <select id="vente-client">
-      <option value="">— Choisir un client —</option>
+    <label for="vente-qte">Quantité vendue *</label>
+    <input id="vente-qte" type="number" min="1" value="1">
+    <div class="hint" id="vente-qte-hint"></div>
+
+    <label for="vente-mode">Vendu à *</label>
+    <select id="vente-mode">
+      <option value="client">Un client (CRM)</option>
+      <option value="plateforme">Une plateforme (Vinted, Vestiaire...)</option>
     </select>
 
-    <label for="vente-prix">Prix de vente (€) *</label>
+    <div id="vente-client-wrap">
+      <label for="vente-client">Client *</label>
+      <select id="vente-client">
+        <option value="">— Choisir un client —</option>
+      </select>
+    </div>
+
+    <div id="vente-plateforme-wrap" style="display:none;">
+      <label for="vente-plateforme">Plateforme *</label>
+      <input id="vente-plateforme" placeholder="Vinted, Vestiaire Collective, Leboncoin...">
+    </div>
+
+    <label for="vente-prix">Prix de vente unitaire (€) *</label>
     <input id="vente-prix" type="number" min="0">
 
     <label for="vente-date">Date de vente *</label>
@@ -480,11 +501,15 @@
         ? `Billet à l'unité : ${d.prix_unitaire} € · Total : ${p.prix} €`
         : `${p.prix} €`;
 
+      const qteLine = (p.quantite_stock != null && p.quantite_stock > 1)
+        ? `<div class="objectif">${p.quantite_stock} exemplaires en stock</div>` : '';
+
       card.innerHTML = `
         <div class="info">
           <div class="name">${p.nom}</div>
           <div class="meta">${p.categorie}${p.marque ? ' · ' + p.marque : ''} · <span class="price">${prixLine}</span></div>
           ${detailsLine ? `<div class="objectif">${detailsLine}</div>` : ''}
+          ${qteLine}
           ${objectifLabel ? `<div class="objectif">${objectifLabel}</div>` : ''}
         </div>
         <select class="statut-select" data-id="${p.id}" data-nom="${p.nom}" data-categorie="${p.categorie}" data-marque="${p.marque || ''}" data-prix="${p.prix}" data-current="${p.statut}">
@@ -613,6 +638,7 @@
       prix: prixFinal,
       type_produit: document.getElementById('type_produit').value || null,
       objectif: document.getElementById('objectif').value || null,
+      quantite_stock: document.getElementById('quantite_stock').value || 1,
       details: details,
     };
 
@@ -654,19 +680,49 @@
   const venteDateInput = document.getElementById('vente-date');
   const venteMsg = document.getElementById('vente-msg');
   const venteProduitNom = document.getElementById('vente-produit-nom');
+  const venteQteInput = document.getElementById('vente-qte');
+  const venteQteHint = document.getElementById('vente-qte-hint');
+  const venteModeSelect = document.getElementById('vente-mode');
+  const venteClientWrap = document.getElementById('vente-client-wrap');
+  const ventePlateformeWrap = document.getElementById('vente-plateforme-wrap');
+  const ventePlateformeInput = document.getElementById('vente-plateforme');
   let currentVenteSelect = null;
+  let currentVenteProduit = null;
 
   function todayStr() {
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
+  venteModeSelect.addEventListener('change', () => {
+    const mode = venteModeSelect.value;
+    venteClientWrap.style.display = mode === 'client' ? 'block' : 'none';
+    ventePlateformeWrap.style.display = mode === 'plateforme' ? 'block' : 'none';
+  });
+
   async function openVenteModal(selectEl) {
     currentVenteSelect = selectEl;
     venteMsg.textContent = '';
-    venteProduitNom.textContent = selectEl.dataset.nom;
-    ventePrixInput.value = selectEl.dataset.prix;
+
+    const { data: produit, error: prodError } = await sb.from('produits').select('*').eq('id', selectEl.dataset.id).single();
+    currentVenteProduit = produit;
+
+    const qtyDispo = produit && produit.quantite_stock != null ? produit.quantite_stock : 1;
+    venteProduitNom.textContent = (produit && produit.nom) || selectEl.dataset.nom;
+    venteQteInput.max = qtyDispo;
+    venteQteInput.value = qtyDispo;
+    venteQteHint.textContent = `Disponible en stock : ${qtyDispo}`;
+
+    const prixUnitaireDefaut = produit && produit.details && produit.details.prix_unitaire != null
+      ? produit.details.prix_unitaire
+      : (produit ? produit.prix : selectEl.dataset.prix);
+    ventePrixInput.value = prixUnitaireDefaut;
     venteDateInput.value = todayStr();
+
+    venteModeSelect.value = 'client';
+    venteClientWrap.style.display = 'block';
+    ventePlateformeWrap.style.display = 'none';
+    ventePlateformeInput.value = '';
 
     venteClientSelect.innerHTML = '<option value="">Chargement…</option>';
     const { data: clients, error } = await sb.from('clients').select('id, prenom, nom').order('prenom');
@@ -686,6 +742,7 @@
     }
     venteOverlay.classList.remove('open');
     currentVenteSelect = null;
+    currentVenteProduit = null;
   }
 
   document.getElementById('vente-cancel').addEventListener('click', () => closeVenteModal(true));
@@ -694,38 +751,84 @@
   });
 
   document.getElementById('vente-confirm').addEventListener('click', async () => {
-    const clientId = venteClientSelect.value;
-    const prixVente = ventePrixInput.value;
-    const dateVente = venteDateInput.value;
-
-    if (!clientId || !prixVente || !dateVente) {
-      venteMsg.textContent = 'Client, prix et date sont obligatoires.';
-      venteMsg.className = 'error';
-      return;
-    }
-
     const sel = currentVenteSelect;
-
-    // 1. Enregistrer l'achat côté client
-    const { error: achatError } = await sb.from('achats').insert({
-      client_id: clientId,
-      produit_id: sel.dataset.id,
-      nom_produit: sel.dataset.nom,
-      categorie: sel.dataset.categorie,
-      marque: sel.dataset.marque || null,
-      prix: prixVente,
-      date_achat: dateVente,
-    });
-
-    if (achatError) {
-      venteMsg.textContent = 'Erreur : ' + achatError.message;
+    const produit = currentVenteProduit;
+    if (!produit) {
+      venteMsg.textContent = "Erreur : impossible de charger l'article.";
       venteMsg.className = 'error';
       return;
     }
 
-    // 2. Marquer le produit comme vendu
+    const mode = venteModeSelect.value;
+    const clientId = venteClientSelect.value;
+    const plateforme = ventePlateformeInput.value.trim();
+    const prixUnitaire = parseFloat(ventePrixInput.value);
+    const dateVente = venteDateInput.value;
+    const qte = parseInt(venteQteInput.value);
+
+    const qtyDispo = produit.quantite_stock != null ? produit.quantite_stock : 1;
+
+    if (!qte || qte < 1 || qte > qtyDispo) {
+      venteMsg.textContent = `Quantité invalide (entre 1 et ${qtyDispo}).`;
+      venteMsg.className = 'error';
+      return;
+    }
+    if (isNaN(prixUnitaire) || !dateVente) {
+      venteMsg.textContent = 'Prix et date sont obligatoires.';
+      venteMsg.className = 'error';
+      return;
+    }
+    if (mode === 'client' && !clientId) {
+      venteMsg.textContent = 'Choisis un client.';
+      venteMsg.className = 'error';
+      return;
+    }
+    if (mode === 'plateforme' && !plateforme) {
+      venteMsg.textContent = 'Indique la plateforme.';
+      venteMsg.className = 'error';
+      return;
+    }
+
+    const totalVente = prixUnitaire * qte;
+
+    // 1. Si vendu à un client, enregistrer l'achat dans son historique
+    if (mode === 'client') {
+      const { error: achatError } = await sb.from('achats').insert({
+        client_id: clientId,
+        produit_id: sel.dataset.id,
+        nom_produit: produit.nom,
+        categorie: produit.categorie,
+        marque: produit.marque || null,
+        prix: totalVente,
+        date_achat: dateVente,
+      });
+      if (achatError) {
+        venteMsg.textContent = 'Erreur : ' + achatError.message;
+        venteMsg.className = 'error';
+        return;
+      }
+    }
+
+    // 2. Mettre à jour le stock et journaliser la vente dans les détails du produit
+    const newQty = qtyDispo - qte;
+    const newStatut = newQty <= 0 ? 'vendu' : produit.statut;
+
+    const venteEntry = {
+      date: dateVente,
+      quantite: qte,
+      prix_unitaire: prixUnitaire,
+      mode: mode,
+      ...(mode === 'client' ? { client_id: clientId } : { plateforme: plateforme }),
+    };
+    const newDetails = { ...(produit.details || {}) };
+    newDetails.ventes = [...(newDetails.ventes || []), venteEntry];
+
     const { error: produitError } = await sb.from('produits')
-      .update({ statut: 'vendu' })
+      .update({
+        quantite_stock: newQty > 0 ? newQty : 0,
+        statut: newStatut,
+        details: newDetails,
+      })
       .eq('id', sel.dataset.id);
 
     if (produitError) {
